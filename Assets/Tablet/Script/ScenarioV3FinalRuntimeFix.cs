@@ -186,6 +186,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         ApplyExactAttentionDots();
         ApplyRightSideChoiceLayout();
         EnhanceScheduleChecklist();
+        MaintainGamblingLauncherSurface();
         UpdateDay1InitialGateState();
         NormalizeGamblingLabelStyle();
         if (choiceOverlay != null && choiceOverlay.activeSelf)
@@ -1240,16 +1241,34 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         if (launcher == null)
             return;
 
+        // V26.2: WebGL에서도 클릭 경로가 씬의 Inspector 이벤트에 의존하지 않도록
+        // 런타임 입력 표면을 항상 재바인딩한다. 기존 프록시가 있어도 상태를 복구한다.
         Transform existingProxy = launcher.transform.Find("V21 Gambling Guard");
         if (existingProxy != null)
         {
-            gamblingLauncherButton = existingProxy.GetComponent<Button>();
+            Image existingImage = existingProxy.GetComponent<Image>();
+            Button existingButton = existingProxy.GetComponent<Button>();
+            if (existingImage != null)
+            {
+                existingImage.color = new Color(1f, 1f, 1f, 0.01f);
+                existingImage.raycastTarget = true;
+            }
+            if (existingButton != null)
+            {
+                existingButton.enabled = true;
+                existingButton.interactable = true;
+                existingButton.transition = Selectable.Transition.None;
+                existingButton.targetGraphic = existingImage;
+                existingButton.onClick.RemoveListener(HandleGamblingLauncher);
+                existingButton.onClick.AddListener(HandleGamblingLauncher);
+                gamblingLauncherButton = existingButton;
+            }
+            existingProxy.gameObject.SetActive(true);
             existingProxy.SetAsLastSibling();
             return;
         }
 
-        // Inspector에 영구 등록된 클릭 이벤트는 RemoveAllListeners로 지워지지 않는다.
-        // 투명한 자식 버튼이 먼저 입력을 받아, 제한 상태에서 도박 앱이 함께 열리는 일을 막는다.
+        // Inspector에 영구 등록된 클릭 이벤트와 무관하게 투명한 자식 버튼이 입력을 전담한다.
         GameObject proxyObject = new GameObject("V21 Gambling Guard", typeof(RectTransform),
             typeof(CanvasRenderer), typeof(Image), typeof(Button));
         proxyObject.layer = launcher.layer;
@@ -1258,12 +1277,15 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         proxyObject.transform.SetAsLastSibling();
 
         Image proxyImage = proxyObject.GetComponent<Image>();
-        proxyImage.color = new Color(1f, 1f, 1f, 0.001f);
+        proxyImage.color = new Color(1f, 1f, 1f, 0.01f);
         proxyImage.raycastTarget = true;
 
         Button proxyButton = proxyObject.GetComponent<Button>();
+        proxyButton.enabled = true;
+        proxyButton.interactable = true;
         proxyButton.transition = Selectable.Transition.None;
         proxyButton.targetGraphic = proxyImage;
+        proxyButton.onClick.RemoveListener(HandleGamblingLauncher);
         proxyButton.onClick.AddListener(HandleGamblingLauncher);
         gamblingLauncherButton = proxyButton;
     }
@@ -1312,7 +1334,11 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         // Do not overlap another VN scene. Unread Minjae temptation is handled by the existing
         // schedule-choice skip path when the player actually moves on with school/job/study.
         if (!string.IsNullOrWhiteSpace(director.ActiveSceneId))
+        {
+            // 클릭이 먹지 않은 것처럼 보이지 않도록 진행 중인 장면을 먼저 마치라는 피드백을 준다.
+            flow.V3ShowDialogue("나", "(지금 보고 있는 내용을 먼저 마저 보자.)", null);
             return;
+        }
 
         string decisionText = BuildGambleDecisionText();
         ShowManualChoiceOverlay(decisionText,
@@ -1595,21 +1621,24 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         GameObject appManager = FindSceneObject("AppManager");
         if (appManager == null)
             return;
+
+        // V26.2: 임의의 앱 라벨이 아니라 실제 '지도' 라벨을 1순위 템플릿으로 사용한다.
+        // 폰트뿐 아니라 RectTransform까지 복제해서 크기와 세로 위치를 완전히 맞춘다.
         TMP_Text[] candidates = appManager.GetComponentsInChildren<TMP_Text>(true);
-        TMP_Text reference = candidates
-            .FirstOrDefault(text => text != null && text != label && !text.transform.IsChildOf(launcher.transform) &&
-                new[] { "지도", "메시지", "은행", "공부", "취침", "설정", "SNS" }
-                    .Contains((text.text ?? string.Empty).Trim()));
+        TMP_Text reference = candidates.FirstOrDefault(text => text != null && text != label &&
+            !text.transform.IsChildOf(launcher.transform) &&
+            string.Equals((text.text ?? string.Empty).Trim(), "지도", StringComparison.Ordinal));
         if (reference == null)
         {
+            string[] preferred = { "취침", "메시지", "은행", "공부", "설정" };
             reference = candidates.FirstOrDefault(text => text != null && text != label &&
-                !text.transform.IsChildOf(launcher.transform) && text.font != null &&
-                text.fontSize >= 18f && text.fontSize <= 36f &&
-                !string.IsNullOrWhiteSpace(text.text) && text.text.Trim().Length <= 6);
+                !text.transform.IsChildOf(launcher.transform) &&
+                preferred.Contains((text.text ?? string.Empty).Trim()));
         }
         if (reference == null)
             return;
 
+        label.text = "도박";
         label.font = reference.font;
         label.fontSharedMaterial = reference.fontSharedMaterial;
         label.fontSize = reference.fontSize;
@@ -1619,7 +1648,62 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         label.characterSpacing = reference.characterSpacing;
         label.wordSpacing = reference.wordSpacing;
         label.lineSpacing = reference.lineSpacing;
+        label.paragraphSpacing = reference.paragraphSpacing;
         label.textWrappingMode = reference.textWrappingMode;
+        label.overflowMode = reference.overflowMode;
+        label.enableAutoSizing = reference.enableAutoSizing;
+        label.fontSizeMin = reference.fontSizeMin;
+        label.fontSizeMax = reference.fontSizeMax;
+        label.margin = reference.margin;
+        label.raycastTarget = false;
+
+        RectTransform sourceRect = reference.rectTransform;
+        RectTransform targetRect = label.rectTransform;
+        targetRect.anchorMin = sourceRect.anchorMin;
+        targetRect.anchorMax = sourceRect.anchorMax;
+        targetRect.pivot = sourceRect.pivot;
+        targetRect.anchoredPosition = sourceRect.anchoredPosition;
+        targetRect.sizeDelta = sourceRect.sizeDelta;
+        targetRect.localRotation = sourceRect.localRotation;
+        targetRect.localScale = sourceRect.localScale;
+    }
+
+    private void MaintainGamblingLauncherSurface()
+    {
+        if (flow == null || director == null)
+            return;
+        GameObject launcher = FindSceneObject("Gambling Launcher");
+        if (launcher == null)
+            return;
+
+        Transform proxy = launcher.transform.Find("V21 Gambling Guard");
+        if (proxy == null)
+        {
+            PatchGamblingLauncher();
+            proxy = launcher.transform.Find("V21 Gambling Guard");
+        }
+        if (proxy == null)
+            return;
+
+        bool usable = launcher.activeInHierarchy && director.IsGamblingAppUnlocked && !flow.IsGameEnded;
+        proxy.gameObject.SetActive(usable);
+        Image image = proxy.GetComponent<Image>();
+        if (image != null)
+        {
+            image.raycastTarget = usable;
+            image.color = new Color(1f, 1f, 1f, 0.01f);
+        }
+        Button button = proxy.GetComponent<Button>();
+        if (button != null)
+        {
+            button.enabled = true;
+            button.interactable = usable;
+            button.onClick.RemoveListener(HandleGamblingLauncher);
+            button.onClick.AddListener(HandleGamblingLauncher);
+            gamblingLauncherButton = button;
+        }
+        if (usable)
+            proxy.SetAsLastSibling();
     }
 
     private void PatchMapLauncherGate()
