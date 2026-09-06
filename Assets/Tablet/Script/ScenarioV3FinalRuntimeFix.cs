@@ -1241,53 +1241,21 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         if (launcher == null)
             return;
 
-        // V26.2: WebGL에서도 클릭 경로가 씬의 Inspector 이벤트에 의존하지 않도록
-        // 런타임 입력 표면을 항상 재바인딩한다. 기존 프록시가 있어도 상태를 복구한다.
+        // The launcher itself owns its input. A full-size child button used to sit on top of
+        // this control, which made the actual click target depend on sibling order.
         Transform existingProxy = launcher.transform.Find("V21 Gambling Guard");
         if (existingProxy != null)
-        {
-            Image existingImage = existingProxy.GetComponent<Image>();
-            Button existingButton = existingProxy.GetComponent<Button>();
-            if (existingImage != null)
-            {
-                existingImage.color = new Color(1f, 1f, 1f, 0.01f);
-                existingImage.raycastTarget = true;
-            }
-            if (existingButton != null)
-            {
-                existingButton.enabled = true;
-                existingButton.interactable = true;
-                existingButton.transition = Selectable.Transition.None;
-                existingButton.targetGraphic = existingImage;
-                existingButton.onClick.RemoveListener(HandleGamblingLauncher);
-                existingButton.onClick.AddListener(HandleGamblingLauncher);
-                gamblingLauncherButton = existingButton;
-            }
-            existingProxy.gameObject.SetActive(true);
-            existingProxy.SetAsLastSibling();
+            Destroy(existingProxy.gameObject);
+
+        Button launcherButton = launcher.GetComponent<Button>();
+        if (launcherButton == null)
             return;
-        }
 
-        // Inspector에 영구 등록된 클릭 이벤트와 무관하게 투명한 자식 버튼이 입력을 전담한다.
-        GameObject proxyObject = new GameObject("V21 Gambling Guard", typeof(RectTransform),
-            typeof(CanvasRenderer), typeof(Image), typeof(Button));
-        proxyObject.layer = launcher.layer;
-        proxyObject.transform.SetParent(launcher.transform, false);
-        Stretch(proxyObject.GetComponent<RectTransform>());
-        proxyObject.transform.SetAsLastSibling();
-
-        Image proxyImage = proxyObject.GetComponent<Image>();
-        proxyImage.color = new Color(1f, 1f, 1f, 0.01f);
-        proxyImage.raycastTarget = true;
-
-        Button proxyButton = proxyObject.GetComponent<Button>();
-        proxyButton.enabled = true;
-        proxyButton.interactable = true;
-        proxyButton.transition = Selectable.Transition.None;
-        proxyButton.targetGraphic = proxyImage;
-        proxyButton.onClick.RemoveListener(HandleGamblingLauncher);
-        proxyButton.onClick.AddListener(HandleGamblingLauncher);
-        gamblingLauncherButton = proxyButton;
+        launcherButton.enabled = true;
+        launcherButton.interactable = true;
+        launcherButton.onClick.RemoveAllListeners();
+        launcherButton.onClick.AddListener(HandleGamblingLauncher);
+        gamblingLauncherButton = launcherButton;
     }
 
     private void HandleGamblingLauncher()
@@ -1545,8 +1513,6 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
                 }
             }
 
-            if (!homeLauncher && string.Equals(button.gameObject.name, "Gambling Launcher", StringComparison.Ordinal))
-                homeLauncher = true;
             if (!homeLauncher)
                 continue;
 
@@ -1676,34 +1642,14 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         if (launcher == null)
             return;
 
-        Transform proxy = launcher.transform.Find("V21 Gambling Guard");
-        if (proxy == null)
-        {
-            PatchGamblingLauncher();
-            proxy = launcher.transform.Find("V21 Gambling Guard");
-        }
-        if (proxy == null)
+        Button button = launcher.GetComponent<Button>();
+        if (button == null)
             return;
 
         bool usable = launcher.activeInHierarchy && director.IsGamblingAppUnlocked && !flow.IsGameEnded;
-        proxy.gameObject.SetActive(usable);
-        Image image = proxy.GetComponent<Image>();
-        if (image != null)
-        {
-            image.raycastTarget = usable;
-            image.color = new Color(1f, 1f, 1f, 0.01f);
-        }
-        Button button = proxy.GetComponent<Button>();
-        if (button != null)
-        {
-            button.enabled = true;
-            button.interactable = usable;
-            button.onClick.RemoveListener(HandleGamblingLauncher);
-            button.onClick.AddListener(HandleGamblingLauncher);
-            gamblingLauncherButton = button;
-        }
-        if (usable)
-            proxy.SetAsLastSibling();
+        button.enabled = true;
+        button.interactable = usable;
+        gamblingLauncherButton = button;
     }
 
     private void PatchMapLauncherGate()
@@ -2677,6 +2623,8 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
 
     private void ShowChoiceOverlay(ScenarioV3Line line, string body, SpeakerType messageSpeaker)
     {
+        if (choiceOverlay == null)
+            CreateChoiceOverlay();
         if (choiceOverlay == null || line == null)
             return;
 
@@ -2715,6 +2663,8 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
 
     private void ShowManualChoiceOverlay(string body, params ManualChoiceOption[] options)
     {
+        if (choiceOverlay == null)
+            CreateChoiceOverlay();
         if (choiceOverlay == null || options == null || options.Length == 0 || choiceOverlay.activeSelf)
             return;
 
@@ -2870,10 +2820,10 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         if (choiceOverlay != null)
             return;
 
+        Scene activeScene = SceneManager.GetActiveScene();
         Canvas canvas = Resources.FindObjectsOfTypeAll<Canvas>()
-            .FirstOrDefault(candidate => candidate != null && candidate.gameObject.scene.IsValid() &&
-                                         candidate.transform.parent == null)
-            ?? FindAnyObjectByType<Canvas>();
+            .FirstOrDefault(candidate => candidate != null && candidate.gameObject.scene == activeScene &&
+                                         candidate.transform.parent == null);
         if (canvas == null)
             return;
 
