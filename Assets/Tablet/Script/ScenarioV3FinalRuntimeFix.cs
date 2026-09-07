@@ -172,7 +172,6 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         // V26: 지각 안내는 홈 일정표에서만 보여 준다. 지도 앱을 여는 순간 별도 VN을
         // 끼워 넣으면 일정 장면 큐보다 먼저 떠서 대화 순서를 흔들 수 있으므로 제거한다.
         CaptureNewCheckpointSnapshots();
-        TryShowDeferredBorrowChoice();
         TryReplaceDebtChatChoicesWithDialogue();
         TryOfferPostJobRepayment();
         MaintainTouchDialogueControls();
@@ -2161,7 +2160,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         bool pending = string.Equals(GetDirectorState("pending.borrow_menu"), "true", StringComparison.OrdinalIgnoreCase);
         bool deferred = string.Equals(GetDirectorState("flag.borrow_deferred"), "true", StringComparison.OrdinalIgnoreCase);
         int rememberedDay = GetDirectorInt("v22.borrow_requested_day");
-        if (pending && (deferred || rememberedDay > 0))
+        if (pending && deferred)
         {
             if (!explicitBorrowPending)
             {
@@ -2199,17 +2198,20 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             return;
 
         string target = (GetDirectorState("pending.borrow_target") ?? "none").Trim();
+        bool pendingBorrowMenu = string.Equals(GetDirectorState("pending.borrow_menu"), "true", StringComparison.OrdinalIgnoreCase);
+        bool deferredBorrow = string.Equals(GetDirectorState("flag.borrow_deferred"), "true", StringComparison.OrdinalIgnoreCase);
+        int requestedDay = GetDirectorInt("v22.borrow_requested_day");
         bool hasPreparedMessage = !string.Equals(target, "none", StringComparison.OrdinalIgnoreCase) ||
                                   HasBorrowActionChoices();
 
         // A deferred request is only actionable from 07:00 through 10:00 on the following day.
         // Before 07:00 the intention is kept silently for the coming morning. After 10:00, both
         // the request and any unsent borrow-message buttons expire so they cannot reappear at noon.
-        if (flow.CurrentHour > 10)
+        bool isNightBeforeBorrowMorning = pendingBorrowMenu && deferredBorrow &&
+                                          requestedDay == flow.CurrentDay;
+        if (flow.CurrentHour > 10 && !isNightBeforeBorrowMorning)
         {
-            if (explicitBorrowPending || hasPreparedMessage ||
-                string.Equals(GetDirectorState("pending.borrow_menu"), "true", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(GetDirectorState("flag.borrow_deferred"), "true", StringComparison.OrdinalIgnoreCase))
+            if (explicitBorrowPending || hasPreparedMessage || pendingBorrowMenu || deferredBorrow)
             {
                 ClearDeferredBorrowRequest();
             }
@@ -2295,12 +2297,6 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         }
 
         preservedDialogueLog = new List<string>(current);
-    }
-
-    private void TryShowDeferredBorrowChoice()
-    {
-        // The Director queues this as the regular day-start scene now. Keeping a second route
-        // here allowed another morning scene to suppress the choice until its expiry window.
     }
 
     private void ClearDeferredBorrowRequest()

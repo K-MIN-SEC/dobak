@@ -489,6 +489,9 @@ public sealed class ScenarioV3Director : MonoBehaviour
         pendingDayAdvance = false;
         if (string.Equals(activeScene.id, "borrow_morning_cue", StringComparison.OrdinalIgnoreCase))
             ResolveDeferredBorrowMenu();
+        bool isBorrowChoice = !string.IsNullOrWhiteSpace(choice.effects) &&
+                              choice.effects.IndexOf("borrow:choose_or_defer",
+                                  StringComparison.OrdinalIgnoreCase) >= 0;
         ApplyEffects(choice.effects);
         choiceHistory.Add(new ScenarioV3ChoiceRecord
         {
@@ -503,6 +506,19 @@ public sealed class ScenarioV3Director : MonoBehaviour
             recordedAt = DateTime.Now.ToString("o", CultureInfo.InvariantCulture)
         });
         Save();
+
+        if (isBorrowChoice)
+        {
+            // Borrowing is timing-sensitive and must not depend on the shared deferred-route
+            // continuation. Enter the one intended scene immediately after recording the choice.
+            string target = flow.CurrentHour < 23 ? "borrow_choice" : "borrow_defer_night";
+            immediateRoute = string.Empty;
+            activeScene = null;
+            activeLineIndex = 0;
+            PlayScene(target);
+            Save();
+            return;
+        }
 
         string nextScene = choice.nextSceneId;
         Action continueChoice = () => ContinueAfterResolvedChoice(nextScene);
@@ -2094,7 +2110,8 @@ public sealed class ScenarioV3Director : MonoBehaviour
         {
             if (operation.Equals("choose_or_defer", StringComparison.OrdinalIgnoreCase))
             {
-                immediateRoute = flow.CurrentHour < 23 ? "borrow_choice" : "borrow_defer_night";
+                // HandleChoice owns this timing-sensitive branch and enters the target scene
+                // directly after recording the player's selection.
                 return;
             }
             if (operation.Equals("defer", StringComparison.OrdinalIgnoreCase))
