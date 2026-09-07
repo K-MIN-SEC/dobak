@@ -17,7 +17,7 @@ public static class IntroSceneBuilder
         TMP_FontAsset font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(
             "Assets/Tablet/Front/NotoSansKR-Regular SDF.asset");
         Sprite background = AssetDatabase.LoadAssetAtPath<Sprite>(
-            "Assets/Resources/ScenarioArt/bedroom_night.png");
+            "Assets/Resources/TitleArt/TitleBackground.png");
 
         GameObject cameraObject = new GameObject("Main Camera", typeof(Camera), typeof(AudioListener));
         cameraObject.tag = "MainCamera";
@@ -33,8 +33,8 @@ public static class IntroSceneBuilder
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         CanvasScaler scaler = canvasObject.GetComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1920f, 1080f);
-        scaler.matchWidthOrHeight = 0.5f;
+        scaler.referenceResolution = new Vector2(1920f, 1200f);
+        scaler.matchWidthOrHeight = 1f;
 
         Image backgroundImage = Image("Bedroom Illustration", canvas.transform, Color.white);
         backgroundImage.sprite = background;
@@ -56,9 +56,19 @@ public static class IntroSceneBuilder
         title.alignment = TextAlignmentOptions.Center;
         SetCenteredRect(title.rectTransform, new Vector2(0f, 120f), new Vector2(920f, 170f));
 
+        Image accent = Image("Title Accent", contentObject.transform, new Color(0.72f, 0.13f, 0.17f, 0.95f));
+        accent.raycastTarget = false;
+        SetCenteredRect(accent.rectTransform, new Vector2(0f, 16f), new Vector2(470f, 4f));
+
         Button startButton = Button("Start Game", contentObject.transform, font, "게임하기");
         RectTransform buttonRect = startButton.GetComponent<RectTransform>();
         SetCenteredRect(buttonRect, new Vector2(0f, -78f), new Vector2(340f, 78f));
+
+        TMP_Text credit = Text("Jungnang Police Credit", contentObject.transform, font, "중랑경찰서", 34, FontStyles.Bold);
+        credit.alignment = TextAlignmentOptions.Center;
+        credit.color = new Color(0.92f, 0.95f, 1f, 0.92f);
+        credit.raycastTarget = false;
+        SetCenteredRect(credit.rectTransform, new Vector2(0f, -536f), new Vector2(420f, 44f));
 
         GameObject controllerObject = new GameObject("Intro Scene Controller");
         IntroSceneController controller = controllerObject.AddComponent<IntroSceneController>();

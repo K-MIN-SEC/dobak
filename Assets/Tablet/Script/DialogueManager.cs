@@ -124,6 +124,7 @@ public class DialogueManager : MonoBehaviour
         EnsureInitialized();
         ConfigureChatWindowArt();
         ConfigureChatViewport();
+        ConfigureChatHeader();
         HideLegacyMessageLabels();
 
         // 초기 프로필 UI 갱신
@@ -536,6 +537,48 @@ public class DialogueManager : MonoBehaviour
             viewportImage.color = new Color(1f, 1f, 1f, 0.001f);
     }
 
+    private void ConfigureChatHeader()
+    {
+        if (speakerNameText != null)
+        {
+            RectTransform nameRect = speakerNameText.rectTransform;
+            nameRect.anchorMin = new Vector2(0f, 1f);
+            nameRect.anchorMax = new Vector2(1f, 1f);
+            nameRect.pivot = new Vector2(0.5f, 1f);
+            // Keep the scene-approved header layout: clear the back-arrow hit area,
+            // preserve a left-aligned name, and center it vertically in the header strip.
+            nameRect.anchoredPosition = new Vector2(79f, -53f);
+            nameRect.sizeDelta = new Vector2(-158f, 50f);
+            speakerNameText.alignment = TextAlignmentOptions.MidlineLeft;
+        }
+
+        if (dialoguePanel == null || dialoguePanel.transform.Find("Chat Header Back Button") != null)
+            return;
+
+        // The back-arrow is part of the chat-window artwork, so add a dedicated hit area over it.
+        GameObject buttonObject = new GameObject("Chat Header Back Button", typeof(RectTransform), typeof(CanvasRenderer),
+            typeof(Image), typeof(Button));
+        buttonObject.layer = dialoguePanel.layer;
+        buttonObject.transform.SetParent(dialoguePanel.transform, false);
+
+        RectTransform buttonRect = buttonObject.GetComponent<RectTransform>();
+        buttonRect.anchorMin = buttonRect.anchorMax = new Vector2(0f, 1f);
+        buttonRect.pivot = new Vector2(0.5f, 0.5f);
+        buttonRect.anchoredPosition = new Vector2(66f, -48f);
+        buttonRect.sizeDelta = new Vector2(100f, 82f);
+
+        Image buttonImage = buttonObject.GetComponent<Image>();
+        buttonImage.color = new Color(1f, 1f, 1f, 0.01f);
+        Button button = buttonObject.GetComponent<Button>();
+        button.targetGraphic = buttonImage;
+        ColorBlock colors = button.colors;
+        colors.normalColor = new Color(1f, 1f, 1f, 0.01f);
+        colors.highlightedColor = new Color(1f, 1f, 1f, 0.06f);
+        colors.pressedColor = new Color(1f, 1f, 1f, 0.16f);
+        button.colors = colors;
+        button.onClick.AddListener(CloseDialogue);
+    }
+
     private static void CreateChatWindowSlice(string objectName, Transform parent, Texture texture,
         Rect uvRect, Vector2 anchorMin, Vector2 anchorMax, float bottomOffset, float topOffset)
     {
@@ -571,6 +614,7 @@ public class DialogueManager : MonoBehaviour
 
         EnsureInitialized();
         ConfigureChatViewport();
+        ConfigureChatHeader();
         currentSpeaker = speaker;
 
         bool isNewChannel = !channels.ContainsKey(speaker);

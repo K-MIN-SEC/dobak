@@ -2466,6 +2466,10 @@ public sealed class GameFlowManager : MonoBehaviour
 
     private static TMP_FontAsset FindPreferredFont()
     {
+        TMP_FontAsset configuredFont = UIFontProvider.Get();
+        if (configuredFont != null)
+            return configuredFont;
+
         TMP_FontAsset fallback = null;
         foreach (TMP_FontAsset font in Resources.FindObjectsOfTypeAll<TMP_FontAsset>())
         {
@@ -2482,18 +2486,7 @@ public sealed class GameFlowManager : MonoBehaviour
 
     private static void ApplyKoreanFont()
     {
-        TMP_FontAsset font = FindPreferredFont();
-        if (font == null)
-            return;
-
-        foreach (TMP_Text text in Resources.FindObjectsOfTypeAll<TMP_Text>())
-        {
-            if (text != null && text.gameObject.scene.IsValid())
-            {
-                text.font = font;
-                text.fontStyle |= FontStyles.Bold;
-            }
-        }
+        UIFontProvider.ApplyToAllText();
     }
 
     public static void StyleHomeAppLabels()

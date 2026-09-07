@@ -42,6 +42,10 @@ public class StatusBar : MonoBehaviour, IPointerDownHandler, IDragHandler, IPoin
 
     private void Start()
     {
+        // Keep the pull-down surface full-width on both 16:10 and 16:9 canvases.
+        panel.anchorMin = new Vector2(0f, 0.5f);
+        panel.anchorMax = new Vector2(1f, 0.5f);
+        panel.sizeDelta = new Vector2(0f, panel.sizeDelta.y);
         panel.anchoredPosition = new Vector2(0, closedY);
         // 처음에는 완전 투명
         SetTouchAreaAlpha(0f);

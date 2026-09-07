@@ -212,21 +212,25 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         if (invalidBorrowMorning != null)
             invalidBorrowMorning.condition = "day<0";
 
+        ScenarioV3Scene borrowMorningScene = database.GetScene("borrow_morning_cue");
         ScenarioV3Line borrowMorning = FindLine("borrow_morning_cue_01");
-        if (borrowMorning != null)
+        if (borrowMorningScene != null && borrowMorning != null)
         {
-            // Keep the legacy scene as a silent compatibility router. The visible target choice is
-            // rendered once, directly over the tablet home screen by TryShowDeferredBorrowChoice.
-            borrowMorning.delivery = "router";
-            borrowMorning.text = string.Empty;
-            borrowMorning.enterEffects = "pending.borrow_menu:set=true";
+            // This belongs to the normal day-start queue. A polling overlay could miss its idle
+            // window while another morning scene was queued, then expire without ever appearing.
+            borrowMorningScene.priority = 600;
+            RegisterSceneTrigger(borrowMorningScene, "deferred_borrow_morning");
+            borrowMorningScene.condition = "pending.borrow_menu=true";
+            borrowMorning.delivery = "overlay";
+            borrowMorning.text = "어젯밤 미뤄 둔 연락을 지금 정해야 한다. 누구에게 부탁할까.";
+            borrowMorning.enterEffects = string.Empty;
             borrowMorning.autoNext = string.Empty;
         }
 
         ScenarioV3Line borrowChoice = FindLine("borrow_choice_01");
         if (borrowChoice != null)
         {
-            borrowChoice.text = "어젯밤 미뤄 둔 연락을 지금 정해야 한다. 누구에게 부탁할까.";
+            borrowChoice.text = "누구에게 부탁할지 정해야 한다. 누구에게 부탁할까.";
             if (borrowChoice.choiceA != null)
                 borrowChoice.choiceA.nextSceneId = string.Empty;
             if (borrowChoice.choiceB != null)
@@ -1203,6 +1207,30 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         };
     }
 
+    private void RegisterSceneTrigger(ScenarioV3Scene scene, string trigger)
+    {
+        if (scene == null || string.IsNullOrWhiteSpace(trigger))
+            return;
+
+        Dictionary<string, List<ScenarioV3Scene>> scenesByTrigger =
+            GetField<Dictionary<string, List<ScenarioV3Scene>>>(database, "scenesByTrigger");
+        if (scenesByTrigger == null)
+            return;
+
+        foreach (List<ScenarioV3Scene> scenes in scenesByTrigger.Values)
+            scenes.RemoveAll(candidate => ReferenceEquals(candidate, scene));
+
+        scene.trigger = trigger;
+        if (!scenesByTrigger.TryGetValue(trigger, out List<ScenarioV3Scene> triggerScenes))
+        {
+            triggerScenes = new List<ScenarioV3Scene>();
+            scenesByTrigger.Add(trigger, triggerScenes);
+        }
+
+        triggerScenes.Add(scene);
+        triggerScenes.Sort((left, right) => right.priority.CompareTo(left.priority));
+    }
+
     private void AddOrReplaceScene(ScenarioV3Scene scene)
     {
         Dictionary<string, ScenarioV3Scene> scenes =
@@ -1264,6 +1292,17 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             return;
         if (GetField<bool>(flow, "isTransitioning"))
             return;
+
+        // The home launcher must respect the same required-schedule gate as the
+        // original app button. Route it through GameFlowManager so the player gets
+        // the appropriate school, job, or study prompt instead of a gamble choice.
+        if ((flow.IsWeekend && !flow.IsJobDone) ||
+            (!flow.IsWeekend && !flow.IsSchoolDone) ||
+            (!flow.IsWeekend && flow.V3HasStudyToday && !flow.IsHomeworkDone))
+        {
+            InvokePrivate(flow, "StartScenarioGambling");
+            return;
+        }
 
         string outgoingContact = GetField<string>(director, "pendingOutgoingContact") ?? string.Empty;
         string pendingBorrowTarget = GetDirectorState("pending.borrow_target");
@@ -1395,9 +1434,8 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             return;
         }
 
-        // Use the Director's own gamble effect parser so cash/debt/no-funds/repeat-loss behavior
-        // stays in one source of truth, but bypass TryStartGambleFromHome's old "finish every
-        // schedule first" gate. This restores the intended schedule-vs-gambling trade-off.
+        // The launcher has already enforced its schedule and message gates above. Use the
+        // Director's effect parser so cash, debt, and fixed-result routing stay in one place.
         SetField(director, "immediateRoute", string.Empty);
         InvokePrivate(director, "ApplyEffects", "gamble:advance");
         string route = GetField<string>(director, "immediateRoute") ?? string.Empty;
@@ -1716,6 +1754,20 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         }
 
         appWindow.OpenApp(AppType.Map);
+        if (ShouldShowLateSchoolPrompt())
+        {
+            SetDirectorState("flag.late_school_prompt_pending", "false");
+            lateMapCueShownDay = flow.CurrentDay;
+            flow.V3ShowDialogue("나", "(지각이다. 서둘러서 학교로 출발하자.)", null);
+        }
+    }
+
+    private bool ShouldShowLateSchoolPrompt()
+    {
+        return flow != null && !flow.IsWeekend && !flow.IsSchoolDone &&
+               flow.CurrentLocation == "집" && flow.CurrentHour >= 10 &&
+               string.Equals(GetDirectorState("flag.late_school_prompt_pending"), "true",
+                   StringComparison.OrdinalIgnoreCase);
     }
 
     private bool ShouldBlockMapForDay1MomMessage()
@@ -1896,6 +1948,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         {
             if (flow.IsWeekend || flow.IsSchoolDone)
                 return;
+
             if (flow.CurrentHour >= 16)
             {
                 appWindow?.CloseCurrentApp();
@@ -2246,46 +2299,8 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
 
     private void TryShowDeferredBorrowChoice()
     {
-        if (borrowOverlayShownForCurrentDay || choiceOverlay == null || choiceOverlay.activeSelf)
-            return;
-
-        // The choice belongs to the morning after the player explicitly deferred borrowing.
-        // It must never surface on the same night or later at noon/afternoon. A real late wake
-        // still uses 10:00, so the valid window is 07:00 through 10:00 inclusive.
-        if (!explicitBorrowPending)
-            return;
-        if (explicitBorrowRequestDay < 0)
-            explicitBorrowRequestDay = GetDirectorInt("v22.borrow_requested_day");
-        if (flow.CurrentDay <= explicitBorrowRequestDay)
-            return;
-        if (flow.CurrentHour < 7)
-            return;
-        if (flow.CurrentHour > 10)
-        {
-            ClearDeferredBorrowRequest();
-            return;
-        }
-        if (!IsDirectorIdle() || flow.CurrentLocation != "집")
-            return;
-
-        ScenarioV3Scene scene = database.GetScene("borrow_choice");
-        if (scene == null || scene.lines.Count == 0)
-            return;
-
-        borrowOverlayShownForCurrentDay = true;
-        explicitBorrowPending = false;
-        explicitBorrowRequestDay = -1;
-        SetDirectorState("v22.borrow_requested_day", "0");
-        SetDirectorState("pending.borrow_menu", "false");
-        SetDirectorState("flag.borrow_deferred", "false");
-        SetField(director, "activeScene", scene);
-        SetField(director, "activeLineIndex", 0);
-        appWindow?.CloseCurrentApp();
-
-        ScenarioV3Line line = scene.lines[0];
-        ShowChoiceOverlay(line, "어젯밤 생각해 둔 연락을 정해야 한다. 누구에게 부탁할까.",
-            SpeakerType.Unknown);
-        InvokePrivate(director, "Save");
+        // The Director queues this as the regular day-start scene now. Keeping a second route
+        // here allowed another morning scene to suppress the choice until its expiry window.
     }
 
     private void ClearDeferredBorrowRequest()
@@ -2827,8 +2842,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         if (canvas == null)
             return;
 
-        TMP_FontAsset font = Resources.FindObjectsOfTypeAll<TMP_FontAsset>()
-            .FirstOrDefault(candidate => candidate != null && candidate.name.Contains("NotoSansKR"))
+        TMP_FontAsset font = UIFontProvider.Get()
             ?? FindAnyObjectByType<TMP_Text>()?.font;
 
         choiceOverlay = CreatePanel("Scenario V3 In-App Dialogue Choice", canvas.transform,

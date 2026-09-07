@@ -246,6 +246,15 @@ public sealed class ScenarioV3Director : MonoBehaviour
             return;
         }
 
+        if (app == null)
+        {
+            // 단독 수신 메시지를 읽고 채팅 앱을 닫은 뒤에도 취침 유도가 멈추지 않게 한다.
+            // 조건은 TryQueueBedtimeCue가 다시 엄격하게 확인한다.
+            if (GetInt("unread_count") <= 0)
+                TryQueueBedtimeCue();
+            return;
+        }
+
         if (app == AppType.Message)
         {
             flow.V3HideTutorialHint(AppType.Message);
@@ -439,6 +448,14 @@ public sealed class ScenarioV3Director : MonoBehaviour
         Save();
     }
 
+    private void ResolveDeferredBorrowMenu()
+    {
+        // Preserve the deferred request overnight, then consume it only after a real morning choice.
+        SetState("pending.borrow_menu", "false");
+        SetState("flag.borrow_deferred", "false");
+        SetState("v22.borrow_requested_day", "0");
+    }
+
     public void HandleChoice(string choiceId)
     {
         if (activeScene == null && waitingForMessageChoice && waitingMessageScene != null)
@@ -470,6 +487,8 @@ public sealed class ScenarioV3Director : MonoBehaviour
         string before = SnapshotState();
         reactiveTrigger = string.Empty;
         pendingDayAdvance = false;
+        if (string.Equals(activeScene.id, "borrow_morning_cue", StringComparison.OrdinalIgnoreCase))
+            ResolveDeferredBorrowMenu();
         ApplyEffects(choice.effects);
         choiceHistory.Add(new ScenarioV3ChoiceRecord
         {
@@ -724,6 +743,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
         state["pending.borrow_target"] = "none";
         state["flag.late_wake_today"] = "false";
         state["flag.borrow_deferred"] = "false";
+        state["flag.late_school_prompt_pending"] = "false";
         // DOBak V13-D02: 새 게임은 이전 밤샘 상태를 절대 이어받지 않는다.
         state["flag.gambled_late"] = "false";
         state["borrowed.mom"] = "false";
@@ -1653,9 +1673,12 @@ public sealed class ScenarioV3Director : MonoBehaviour
     private bool TryQueueEveningFill()
     {
         if (flow.CurrentDay >= FinalDay || flow.CurrentLocation != "집" || flow.IsSleepHour ||
-            !flow.IsDailyScheduleComplete || GetState("evening_filled") == "1" ||
+            !IsDailyScheduleResolvedForEvening() || GetState("evening_filled") == "1" ||
             activeScene != null || sceneQueue.Count > 0)
             return false;
+
+        if (TryQueueDayTenEveningReminder())
+            return true;
 
         SetState("evening_filled", "1");
         int queued = QueueTrigger("evening_fill", null);
@@ -1667,6 +1690,37 @@ public sealed class ScenarioV3Director : MonoBehaviour
         }
 
         Save();
+        StartQueuedScene();
+        return true;
+    }
+
+    private bool IsDailyScheduleResolvedForEvening()
+    {
+        if (flow.IsWeekend)
+            return flow.IsJobDone || GetState("schedule.job") == "missed";
+
+        bool schoolResolved = flow.IsSchoolDone || GetState("schedule.school") == "missed";
+        bool studyResolved = !flow.V3HasStudyToday || flow.IsHomeworkDone ||
+                             GetState("schedule.homework") == "missed";
+        return schoolResolved && studyResolved;
+    }
+
+    private bool TryQueueDayTenEveningReminder()
+    {
+        if (flow.CurrentDay != 10 || GetState("d10_evening_reminder_sent") == "true")
+            return false;
+
+        // 학교를 마치고 집에 돌아온 정상 경로에서는 17시 전후가 된다.
+        // 미확인 메시지 선택창에 의존하지 않고 저녁 6시에 민재의 압박이 도착해야 한다.
+        if (flow.CurrentHour < 18)
+            flow.V3SetClock("18:00");
+
+        SetState("d10_evening_reminder_sent", "true");
+        int queued = QueueTrigger("d10_evening_reminder", null);
+        Save();
+        if (queued == 0)
+            return false;
+
         StartQueuedScene();
         return true;
     }
@@ -1693,7 +1747,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
     private bool TryQueueBedtimeCue()
     {
         if (flow.CurrentDay >= FinalDay || flow.CurrentLocation != "집" || !flow.IsSleepHour ||
-            !flow.IsDailyScheduleComplete || GetState("bedtime_cued") == "1" ||
+            !IsDailyScheduleResolvedForEvening() || GetState("bedtime_cued") == "1" ||
             HasPendingMessageAction || appWindow?.CurrentAppType == AppType.Message ||
             activeScene != null || sceneQueue.Count > 0)
             return false;
@@ -1790,10 +1844,6 @@ public sealed class ScenarioV3Director : MonoBehaviour
 
     private void BeginForcedLateMorningAdvance()
     {
-        bool explicitBorrowDeferral = pendingBorrowMorningAdvance ||
-                                      GetState("flag.borrow_deferred") == "true";
-        bool showBorrowMenu = explicitBorrowDeferral || GetState("pending.borrow_menu") == "true" ||
-                              (flow.V3BankCash <= 0 && GetInt("counter.gamble_sessions") >= 5);
         // DOBak V13-D05: 차용 연락을 아침으로 미룬 것과 실제 도박 밤샘을 분리한다.
         bool wokeFromGambling = pendingLateWakeAfterGambling;
 
@@ -1830,11 +1880,15 @@ public sealed class ScenarioV3Director : MonoBehaviour
         state["bedtime_cued"] = "0";
         state["day_finalized"] = "0";
         state["pending.gamble_attention"] = "false";
-        state["pending.borrow_menu"] = showBorrowMenu ? "true" : "false";
-        // DOBak V13-D06: 실제 밤샘만 10시 늦잠으로 처리한다. 차용 예약만 있으면 7시에 정상 기상한다.
+        // 밤샘으로 10시에 깬 날에는 차용을 이어서 처리하지 않는다. 이 시각에는
+        // 등교가 우선이며, 남아 있던 밤 전용 차용 상태도 함께 버린다.
+        state["pending.borrow_menu"] = "false";
+        state["pending.borrow_target"] = "none";
+        state["flag.borrow_deferred"] = "false";
         state["flag.late_wake_today"] = wokeFromGambling ? "true" : "false";
-        state["flag.borrow_deferred"] = wokeFromGambling && explicitBorrowDeferral ? "true" : "false";
         state["flag.gambled_late"] = wokeFromGambling ? "true" : "false";
+        // 밤샘 도박으로 늦잠을 잔 날만 지도 진입 전에 지각 독백을 한 번 보여 준다.
+        state["flag.late_school_prompt_pending"] = wokeFromGambling ? "true" : "false";
         state["day_cash_start"] = flow.V3BankCash.ToString(CultureInfo.InvariantCulture);
         flow.V3SetLocation("집");
         flow.V3SetClock(wokeFromGambling ? "10:00" : "07:00");
@@ -1842,20 +1896,10 @@ public sealed class ScenarioV3Director : MonoBehaviour
 
         QueueTrigger("day_start", () =>
         {
-            // 특수 기상 연출과 그 날의 부가 이벤트가 모두 끝난 뒤에만 차용을 이어 간다.
             SetState("flag.late_wake_today", "false");
             // DOBak V13-D07: 당일 아침 장면 선택이 끝난 뒤 임시 플래그를 정리해 다음 날 장면에 남기지 않는다.
             SetState("flag.gambled_late", "false");
-            SetState("flag.borrow_deferred", "false");
-            if (GetState("pending.borrow_menu") != "true")
-            {
-                Save();
-                return;
-            }
-
-            SetState("pending.borrow_menu", "false");
             Save();
-            PlayScene("borrow_morning_cue");
         });
         StartQueuedScene();
     }
@@ -1887,6 +1931,15 @@ public sealed class ScenarioV3Director : MonoBehaviour
         if (flow.CurrentDay >= FinalDay)
             return;
 
+        // The next-morning lender choice is owned by the runtime UI. Persist the
+        // request day here, before the overnight flag is cleared, so a quick sleep
+        // action cannot erase a borrowing decision before that UI observes it.
+        if (GetState("pending.borrow_menu") == "true" &&
+            GetState("flag.borrow_deferred") == "true")
+        {
+            SetState("v22.borrow_requested_day", flow.CurrentDay.ToString(CultureInfo.InvariantCulture));
+        }
+
         flow.V3BeginNextDay();
         dialogueLog.Clear();
         state["schedule.school"] = "pending";
@@ -1899,13 +1952,37 @@ public sealed class ScenarioV3Director : MonoBehaviour
         state["pending.gamble_attention"] = "false";
         state["flag.late_wake_today"] = "false";
         state["flag.borrow_deferred"] = "false";
+        state["flag.late_school_prompt_pending"] = "false";
         // DOBak V13-D08: 정상 취침으로 넘어간 날에도 전날 밤샘 표식을 정리한다.
         state["flag.gambled_late"] = "false";
         state["day_cash_start"] = flow.V3BankCash.ToString(CultureInfo.InvariantCulture);
         Save();
 
+        if (QueueDeferredBorrowMorningAfterDayStart())
+            return;
+
         QueueTrigger("day_start", null);
         StartQueuedScene();
+    }
+
+    private bool QueueDeferredBorrowMorningAfterDayStart()
+    {
+        if (!string.Equals(GetState("pending.borrow_menu"), "true", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        ScenarioV3Scene scene = database.GetScene("borrow_morning_cue");
+        if (scene == null || scene.lines.Count == 0)
+            return false;
+
+        // Let the regular morning scenes finish first. The lender choice must appear before the
+        // player can open the map and leave for school or work.
+        queueCompleted = Combine(queueCompleted, () =>
+        {
+            PlayScene(scene.id);
+        });
+        QueueTrigger("day_start", null);
+        StartQueuedScene();
+        return true;
     }
 
     private void FinalizeCurrentDayStatus()
@@ -2015,11 +2092,21 @@ public sealed class ScenarioV3Director : MonoBehaviour
         }
         if (key.Equals("borrow", StringComparison.OrdinalIgnoreCase))
         {
+            if (operation.Equals("choose_or_defer", StringComparison.OrdinalIgnoreCase))
+            {
+                immediateRoute = flow.CurrentHour < 23 ? "borrow_choice" : "borrow_defer_night";
+                return;
+            }
             if (operation.Equals("defer", StringComparison.OrdinalIgnoreCase))
             {
                 SetState("pending.borrow_menu", "true");
                 SetState("flag.borrow_deferred", "true");
-                pendingBorrowMorningAdvance = true;
+                // 대기 상태와 함께 요청 날짜를 바로 저장한다. 취침 전환이 아주 빨라도
+                // 다음 날 오전 선택지가 사라지지 않도록 AdvanceToNextDay의 저장과 이중으로 보장한다.
+                SetState("v22.borrow_requested_day", flow.CurrentDay.ToString(CultureInfo.InvariantCulture));
+                // 차용은 일반 취침 뒤 다음 날 아침에 선택한다. 이 값을 켜면
+                // 도박 밤샘과 같은 강제 10시 전환으로 들어가 대기 상태가 지워진다.
+                pendingBorrowMorningAdvance = false;
                 return;
             }
             if (operation.StartsWith("prepare=", StringComparison.OrdinalIgnoreCase))
@@ -2138,6 +2225,14 @@ public sealed class ScenarioV3Director : MonoBehaviour
             if (key.Equals("schedule.school", StringComparison.OrdinalIgnoreCase) && value == "complete")
                 reactiveTrigger = "school_complete";
             SetState(key, value);
+
+            // borrow_defer_night는 borrow:defer가 아니라 이 일반 상태 효과를 사용한다.
+            // 따라서 실제 CSV 경로에서도 요청 날짜를 즉시 남겨야 다음 날 아침 UI가 복구된다.
+            if (key.Equals("pending.borrow_menu", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(value, "true", StringComparison.OrdinalIgnoreCase))
+            {
+                SetState("v22.borrow_requested_day", flow.CurrentDay.ToString(CultureInfo.InvariantCulture));
+            }
         }
         else if (operation.StartsWith("add=", StringComparison.OrdinalIgnoreCase))
         {
@@ -2333,8 +2428,9 @@ public sealed class ScenarioV3Director : MonoBehaviour
             .FirstOrDefault(candidate => candidate.transform.parent == null) ?? FindAnyObjectByType<Canvas>();
         if (canvas == null)
             return;
-        TMP_FontAsset font = FindObjectsByType<TMP_Text>(FindObjectsInactive.Include)
-            .Select(text => text.font).FirstOrDefault(candidate => candidate != null && candidate.name.Contains("NotoSansKR"));
+        TMP_FontAsset font = UIFontProvider.Get()
+            ?? FindObjectsByType<TMP_Text>(FindObjectsInactive.Include)
+                .Select(text => text.font).FirstOrDefault(candidate => candidate != null);
 
         novelPanel = Panel("Scenario V3 Novel", canvas.transform, new Color(0.03f, 0.05f, 0.08f, 1f));
         Stretch(novelPanel.GetComponent<RectTransform>());
