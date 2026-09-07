@@ -824,7 +824,16 @@ public class DialogueManager : MonoBehaviour
             foreach (var choice in choices)
             {
                 GameObject btnObj = Instantiate(choiceButtonPrefab, choiceButtonContainer);
-                btnObj.GetComponentInChildren<TextMeshProUGUI>().text = choice.choiceText;
+                TextMeshProUGUI label = btnObj.GetComponentInChildren<TextMeshProUGUI>();
+                if (label != null)
+                {
+                    label.text = choice.choiceText;
+                    label.color = Color.white;
+                }
+
+                Image background = btnObj.GetComponent<Image>();
+                if (background != null)
+                    background.color = new Color(0.15f, 0.42f, 0.72f, 0.95f);
 
                 Choice targetChoice = choice;
                 btnObj.GetComponent<Button>().onClick.AddListener(() => OnSelectChoice(targetChoice));

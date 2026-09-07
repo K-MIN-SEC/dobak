@@ -148,7 +148,19 @@ public sealed class ScenarioV3Director : MonoBehaviour
             : Array.Empty<ScenarioV3Choice>();
     public bool CanRewind => checkpoints.Count > 0;
     public string RewindLabel => FindRewindCheckpoint()?.label ?? string.Empty;
-    public bool HasPendingMessageAction => pendingOutgoingLine != null || waitingForMessageChoice || GetInt("unread_count") > 0;
+    public bool HasPendingMessageAction => pendingOutgoingLine != null || waitingForMessageChoice ||
+                                           GetInt("unread_count") > 0 || HasPreparedBorrowMessage;
+
+    private bool HasPreparedBorrowMessage
+    {
+        get
+        {
+            string target = GetState("pending.borrow_target");
+            return string.Equals(target, "mom", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(target, "seojun", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(target, "minjae", StringComparison.OrdinalIgnoreCase);
+        }
+    }
     public bool HasUnreadMessageAttention => GetInt("unread_count") > 0;
     public bool HasPendingGambleOffer => GetState("pending.gamble_attention") == "true";
     public bool IsGamblingAppUnlocked => GetState("flag.gambling_app_unlocked") == "true";
@@ -372,23 +384,24 @@ public sealed class ScenarioV3Director : MonoBehaviour
     public void ConfirmDeferredBorrowMessage(string target)
     {
         string normalized = (target ?? string.Empty).Trim().ToLowerInvariant();
-        if (normalized != "mom" && normalized != "seojun")
+        if (normalized != "mom" && normalized != "seojun" && normalized != "minjae")
             return;
         if (!string.Equals(GetState("pending.borrow_target"), normalized, StringComparison.OrdinalIgnoreCase))
             return;
 
-        SpeakerType speaker = normalized == "mom" ? SpeakerType.Mom : SpeakerType.Joonho;
+        SpeakerType speaker = BorrowSpeaker(normalized);
         dialogue?.DismissEventChoices(speaker);
         SetState("pending.borrow_target", "none");
         flow.V3ClearAppAttention(AppType.Message);
         Save();
-        PlayScene(normalized == "mom" ? "mom_loan_response" : "seojun_loan_response");
+        PlayScene(normalized == "mom" ? "mom_loan_response" :
+            normalized == "seojun" ? "seojun_loan_response" : "minjae_loan_accepted");
     }
 
     public void CancelDeferredBorrowMessage(string target)
     {
         string normalized = (target ?? string.Empty).Trim().ToLowerInvariant();
-        SpeakerType speaker = normalized == "mom" ? SpeakerType.Mom : SpeakerType.Joonho;
+        SpeakerType speaker = BorrowSpeaker(normalized);
         dialogue?.DismissEventChoices(speaker);
         if (string.Equals(GetState("pending.borrow_target"), normalized, StringComparison.OrdinalIgnoreCase))
             SetState("pending.borrow_target", "none");
@@ -416,6 +429,12 @@ public sealed class ScenarioV3Director : MonoBehaviour
             contactName = "서준";
             replyText = "서준아. 미안한데 지금 5만 원만 빌려줄 수 있어? 다음 주에 꼭 갚을게.";
         }
+        else if (normalized == "minjae")
+        {
+            speaker = SpeakerType.Friend;
+            contactName = "민재";
+            replyText = "민재야. 미안한데 5만 원만 빌려줄 수 있어? 다음 알바비 들어오면 바로 갚을게.";
+        }
         else
         {
             return;
@@ -427,6 +446,10 @@ public sealed class ScenarioV3Director : MonoBehaviour
         SetState("pending.borrow_target", normalized);
         dialogue?.EnsureContact(speaker, contactName);
         dialogue?.PreferConversation(speaker);
+        // This decision owns the current chat action for the selected lender. Clear any stale
+        // runtime buttons before installing it so SetEventChoices cannot enqueue it behind an
+        // invisible older set.
+        dialogue?.DismissEventChoices(speaker);
         dialogue?.SetEventChoices(speaker, new List<Choice>
         {
             new Choice
@@ -446,6 +469,44 @@ public sealed class ScenarioV3Director : MonoBehaviour
         });
         flow.V3MarkAppAttention(AppType.Message);
         Save();
+    }
+
+    private IEnumerator OpenPreparedBorrowConversation(string target)
+    {
+        string normalized = (target ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized != "mom" && normalized != "seojun" && normalized != "minjae")
+            yield break;
+
+        appWindow?.CloseCurrentApp();
+        appWindow?.OpenMessage();
+
+        // AppWindow shows a splash before activating the real message hierarchy. Rebind after
+        // activation so DialogueManager can instantiate buttons on an active chat object.
+        float timeoutAt = Time.realtimeSinceStartup + 3f;
+        while (appWindow != null && appWindow.CurrentAppType != AppType.Message &&
+               Time.realtimeSinceStartup < timeoutAt)
+        {
+            yield return null;
+        }
+
+        if (appWindow == null || appWindow.CurrentAppType != AppType.Message)
+        {
+            flow.V3MarkAppAttention(AppType.Message);
+            yield break;
+        }
+
+        PrepareDeferredBorrowRequest(normalized);
+        SpeakerType speaker = BorrowSpeaker(normalized);
+        dialogue?.OpenDialogue(speaker);
+    }
+
+    private static SpeakerType BorrowSpeaker(string target)
+    {
+        if (string.Equals(target, "mom", StringComparison.OrdinalIgnoreCase))
+            return SpeakerType.Mom;
+        if (string.Equals(target, "minjae", StringComparison.OrdinalIgnoreCase))
+            return SpeakerType.Friend;
+        return SpeakerType.Joonho;
     }
 
     private void ResolveDeferredBorrowMenu()
@@ -487,7 +548,8 @@ public sealed class ScenarioV3Director : MonoBehaviour
         string before = SnapshotState();
         reactiveTrigger = string.Empty;
         pendingDayAdvance = false;
-        if (string.Equals(activeScene.id, "borrow_morning_cue", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(activeScene.id, "borrow_morning_cue", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(activeScene.id, "borrow_morning_minjae_cue", StringComparison.OrdinalIgnoreCase))
             ResolveDeferredBorrowMenu();
         bool isBorrowChoice = !string.IsNullOrWhiteSpace(choice.effects) &&
                               choice.effects.IndexOf("borrow:choose_or_defer",
@@ -511,7 +573,9 @@ public sealed class ScenarioV3Director : MonoBehaviour
         {
             // Borrowing is timing-sensitive and must not depend on the shared deferred-route
             // continuation. Enter the one intended scene immediately after recording the choice.
-            string target = flow.CurrentHour < 23 ? "borrow_choice" : "borrow_defer_night";
+            // From 22:00 onward, asking for money is deferred to the next morning.
+            bool daytimeRequest = flow.CurrentHour >= 7 && flow.CurrentHour < 22;
+            string target = daytimeRequest ? GetBorrowChoiceSceneId(false) : "borrow_defer_night";
             immediateRoute = string.Empty;
             activeScene = null;
             activeLineIndex = 0;
@@ -978,6 +1042,18 @@ public sealed class ScenarioV3Director : MonoBehaviour
             ? "안내"
             : ContactName(line.speaker);
         string text = FormatProtagonistMonologue(line, ExpandText(line.text));
+
+        // Tablet overlays normally only need a continue action. The borrowing scenes also carry
+        // choices, so hand those to the existing tablet choice overlay instead of finishing the
+        // line through V3ShowDialogue, which has no choice-button rendering.
+        if (GetAvailableChoices(line).Count > 0)
+        {
+            ScenarioV3FinalRuntimeFix runtimeFix =
+                FindAnyObjectByType<ScenarioV3FinalRuntimeFix>(FindObjectsInactive.Include);
+            if (runtimeFix != null && runtimeFix.TryShowTabletChoiceOverlay(line, text))
+                return;
+        }
+
         if (!flow.V3ShowDialogue(title, text, () => FinishLine(line)))
             ShowNovelLine(line);
     }
@@ -1541,6 +1617,9 @@ public sealed class ScenarioV3Director : MonoBehaviour
             return GetState("borrowed.seojun") != "true";
         if (choice.id.Equals("minjae_loan_accept", StringComparison.OrdinalIgnoreCase))
             return GetState("borrowed.minjae") != "true";
+        if (choice.id.Equals("borrow_minjae", StringComparison.OrdinalIgnoreCase) ||
+            choice.id.Equals("borrow_morning_minjae", StringComparison.OrdinalIgnoreCase))
+            return GetState("borrowed.minjae") != "true";
         if (choice.id.Equals("no_funds_borrow_again", StringComparison.OrdinalIgnoreCase))
         {
             return GetState("borrowed.mom") != "true" ||
@@ -1647,6 +1726,19 @@ public sealed class ScenarioV3Director : MonoBehaviour
         }
         if (TryResolveMissedJob())
             return;
+
+        // Choosing a lender has already prepared a real message-app choice. Both borrowing
+        // scenes finish through this common path, so open that conversation before generic
+        // tablet/evening handling can make the result look like a no-op.
+        string borrowTarget = GetState("pending.borrow_target");
+        if (!string.IsNullOrWhiteSpace(borrowTarget) &&
+            !string.Equals(borrowTarget, "none", StringComparison.OrdinalIgnoreCase))
+        {
+            HideNovel();
+            StartCoroutine(OpenPreparedBorrowConversation(borrowTarget));
+            return;
+        }
+
         if (returnToTablet && !hasQueuedScene)
         {
             HideNovel();
@@ -1974,10 +2066,8 @@ public sealed class ScenarioV3Director : MonoBehaviour
         state["day_cash_start"] = flow.V3BankCash.ToString(CultureInfo.InvariantCulture);
         Save();
 
-        if (QueueDeferredBorrowMorningAfterDayStart())
-            return;
-
         QueueTrigger("day_start", null);
+        QueueDeferredBorrowMorningAfterDayStart();
         StartQueuedScene();
     }
 
@@ -1986,19 +2076,25 @@ public sealed class ScenarioV3Director : MonoBehaviour
         if (!string.Equals(GetState("pending.borrow_menu"), "true", StringComparison.OrdinalIgnoreCase))
             return false;
 
-        ScenarioV3Scene scene = database.GetScene("borrow_morning_cue");
+        ScenarioV3Scene scene = database.GetScene(GetBorrowChoiceSceneId(true));
         if (scene == null || scene.lines.Count == 0)
             return false;
 
-        // Let the regular morning scenes finish first. The lender choice must appear before the
-        // player can open the map and leave for school or work.
-        queueCompleted = Combine(queueCompleted, () =>
-        {
-            PlayScene(scene.id);
-        });
-        QueueTrigger("day_start", null);
-        StartQueuedScene();
+        // Keep the lender prompt in the same queue as the regular morning scenes. This makes the
+        // order deterministic: every matching day_start scene finishes before the choice appears,
+        // while the player still cannot leave through the map first.
+        sceneQueue.Enqueue(scene);
         return true;
+    }
+
+    private string GetBorrowChoiceSceneId(bool morning)
+    {
+        bool onlyMinjaeRemains = GetState("borrowed.mom") == "true" &&
+                                 GetState("borrowed.seojun") == "true" &&
+                                 GetState("borrowed.minjae") != "true";
+        if (onlyMinjaeRemains)
+            return morning ? "borrow_morning_minjae_cue" : "borrow_choice_minjae";
+        return morning ? "borrow_morning_cue" : "borrow_choice";
     }
 
     private void FinalizeCurrentDayStatus()

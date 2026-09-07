@@ -2211,7 +2211,11 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
                                           requestedDay == flow.CurrentDay;
         if (flow.CurrentHour > 10 && !isNightBeforeBorrowMorning)
         {
-            if (explicitBorrowPending || hasPreparedMessage || pendingBorrowMenu || deferredBorrow)
+            // A same-evening lender selection is already waiting in its real chat room.
+            // Do not erase those send/cancel buttons merely because the game clock is past 10.
+            // Deferred requests still expire after the next-morning window through
+            // explicitBorrowPending, which is set only for the overnight route.
+            if (explicitBorrowPending || pendingBorrowMenu || deferredBorrow)
             {
                 ClearDeferredBorrowRequest();
             }
@@ -2253,6 +2257,11 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         if (string.Equals(GetDirectorState("borrowed.minjae"), "true", StringComparison.OrdinalIgnoreCase))
             return;
 
+        // The rejected scene must finish before its message IDs are released. Otherwise Update can
+        // clear an ID while the same incoming-message coroutine is still presenting that line.
+        if (string.Equals(director.ActiveSceneId, "minjae_loan_rejected", StringComparison.OrdinalIgnoreCase))
+            return;
+
         HashSet<string> seen = GetField<HashSet<string>>(director, "seenScenes");
         if (seen == null || !seen.Any(key =>
                 key.StartsWith("minjae_loan_rejected", StringComparison.OrdinalIgnoreCase)))
@@ -2261,6 +2270,10 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         seen.RemoveWhere(key =>
             key.Equals("minjae_loan_offer", StringComparison.OrdinalIgnoreCase) ||
             key.StartsWith("minjae_loan_offer@", StringComparison.OrdinalIgnoreCase));
+
+        HashSet<string> delivered = GetField<HashSet<string>>(director, "deliveredIncomingLineIds");
+        delivered?.Remove("minjae_loan_offer_01");
+        delivered?.Remove("minjae_loan_rejected_01");
     }
 
     private void HandleDayChangeAndDialogueLog()
@@ -2672,6 +2685,16 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         choiceOverlay.transform.SetAsLastSibling();
     }
 
+    public bool TryShowTabletChoiceOverlay(ScenarioV3Line line, string body)
+    {
+        if (line == null || !line.Choices.Any() ||
+            (choiceOverlay != null && choiceOverlay.activeSelf))
+            return false;
+
+        ShowChoiceOverlay(line, body, SpeakerType.Unknown);
+        return choiceOverlay != null && choiceOverlay.activeSelf;
+    }
+
     private void ShowManualChoiceOverlay(string body, params ManualChoiceOption[] options)
     {
         if (choiceOverlay == null)
@@ -2757,11 +2780,16 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
     {
         if (choice == null || string.IsNullOrWhiteSpace(choice.id))
             return false;
-        if (string.Equals(choice.id, "borrow_mom", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(choice.id, "borrow_mom", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(choice.id, "borrow_morning_mom", StringComparison.OrdinalIgnoreCase))
             return !string.Equals(GetDirectorState("borrowed.mom"), "true", StringComparison.OrdinalIgnoreCase);
-        if (string.Equals(choice.id, "borrow_friend", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(choice.id, "borrow_friend", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(choice.id, "borrow_morning_seojun", StringComparison.OrdinalIgnoreCase))
             return !string.Equals(GetDirectorState("borrowed.seojun"), "true", StringComparison.OrdinalIgnoreCase);
         if (string.Equals(choice.id, "minjae_loan_accept", StringComparison.OrdinalIgnoreCase))
+            return !string.Equals(GetDirectorState("borrowed.minjae"), "true", StringComparison.OrdinalIgnoreCase);
+        if (string.Equals(choice.id, "borrow_minjae", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(choice.id, "borrow_morning_minjae", StringComparison.OrdinalIgnoreCase))
             return !string.Equals(GetDirectorState("borrowed.minjae"), "true", StringComparison.OrdinalIgnoreCase);
         return true;
     }
