@@ -1485,8 +1485,7 @@ public sealed class GameFlowManager : MonoBehaviour
             [AppType.Message] = "MesegeApp",
             [AppType.Study] = "StudyApp",
             [AppType.Bank] = "BankApp",
-            [AppType.Sleep] = "Sleep Launcher",
-            [AppType.Setting] = "Setting_Btn"
+            [AppType.Sleep] = "Sleep Launcher"
         };
         foreach (KeyValuePair<AppType, string> pair in launcherNames)
         {
@@ -1723,14 +1722,13 @@ public sealed class GameFlowManager : MonoBehaviour
             return;
 
         TMP_FontAsset font = FindPreferredFont();
+        HideSettingsSurface();
 
         if (TryBindPlacedRuntimeUI())
         {
             ConfigureBlockingNarrationPanel();
             return;
         }
-
-        CreateSettingsApp(canvas, font);
 
         tutorialHintPanel = CreatePanel("Tutorial Hint", canvas.transform, new Color(0.025f, 0.08f, 0.15f, 0.96f));
         RectTransform hintRect = tutorialHintPanel.GetComponent<RectTransform>();
@@ -1922,16 +1920,9 @@ public sealed class GameFlowManager : MonoBehaviour
             closeBorrow.onClick.AddListener(() => borrowChoicePanel?.SetActive(false));
         }
 
-        GameObject settings = FindSceneObject("Runtime Settings App");
-        if (settings != null)
-            appWindow?.RegisterRuntimeApp(AppType.Setting, settings);
         GameObject sleepApp = FindSceneObject("Sleep App");
         if (sleepApp != null)
             appWindow?.RegisterRuntimeApp(AppType.Sleep, sleepApp);
-
-        Button settingButton = FindSceneObject("Setting_Btn")?.GetComponent<Button>();
-        if (settingButton != null && appWindow != null)
-            RebindButton(settingButton, appWindow.OpenSetting);
 
         if (actionBar != null)
             actionBar.SetActive(false);
@@ -2003,38 +1994,15 @@ public sealed class GameFlowManager : MonoBehaviour
         feedbackCoroutine = null;
     }
 
-    private void CreateSettingsApp(Canvas canvas, TMP_FontAsset font)
+    private static void HideSettingsSurface()
     {
-        Transform appArea = FindSceneObject("AppUi")?.transform ?? canvas.transform;
-        GameObject settings = CreatePanel("Runtime Settings App", appArea, new Color(0.94f, 0.95f, 0.97f, 1f));
-        Stretch(settings.GetComponent<RectTransform>());
+        GameObject settings = FindSceneObject("Runtime Settings App");
+        if (settings != null)
+            settings.SetActive(false);
 
-        TMP_Text title = CreateText("Settings Title", settings.transform, font, 46, FontStyles.Bold, new Color(0.08f, 0.1f, 0.15f));
-        title.text = "설정";
-        SetRect(title.rectTransform, new Vector2(100f, -115f), new Vector2(520f, 70f));
-
-        TMP_Text info = CreateText("Settings Info", settings.transform, font, 28, FontStyles.Normal, new Color(0.18f, 0.21f, 0.27f));
-        info.text = "도박예방게임\n청소년 도박 예방 시뮬레이션\n\n플레이 기록은 기기에 저장되지 않습니다.\n도박 문제 예방·상담 1336";
-        info.textWrappingMode = TextWrappingModes.Normal;
-        SetRect(info.rectTransform, new Vector2(100f, -230f), new Vector2(1100f, 360f));
-
-        Button clearNotifications = CreateButton("Clear Notifications Button", settings.transform, font, "알림 기록 지우기", new Color(0.16f, 0.45f, 0.78f));
-        SetRect(clearNotifications.GetComponent<RectTransform>(), new Vector2(100f, -630f), new Vector2(360f, 76f));
-        clearNotifications.onClick.AddListener(() =>
-        {
-            notificationManager?.Clear();
-            ShowFeedback("알림 기록을 지웠습니다.");
-        });
-
-        settings.SetActive(false);
-        appWindow?.RegisterRuntimeApp(AppType.Setting, settings);
-
-        Button settingButton = FindSceneObject("Setting_Btn")?.GetComponent<Button>();
-        if (settingButton != null && appWindow != null)
-        {
-            settingButton.onClick.RemoveAllListeners();
-            settingButton.onClick.AddListener(appWindow.OpenSetting);
-        }
+        GameObject launcher = FindSceneObject("Setting_Btn");
+        if (launcher != null)
+            launcher.SetActive(false);
     }
 
     private void TriggerScenario(string trigger, Dictionary<string, string> context = null)

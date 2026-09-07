@@ -40,36 +40,25 @@ public static class IntroSceneBuilder
         backgroundImage.sprite = background;
         backgroundImage.preserveAspect = false;
         Stretch(backgroundImage.rectTransform);
-        Image dim = Image("Intro Dim", canvas.transform, new Color(0.015f, 0.03f, 0.06f, 0.62f));
+        Image dim = Image("Intro Dim", canvas.transform, new Color(0.01f, 0.015f, 0.025f, 0.42f));
         Stretch(dim.rectTransform);
 
         GameObject contentObject = new GameObject("Intro Content", typeof(RectTransform), typeof(CanvasGroup));
         contentObject.transform.SetParent(canvas.transform, false);
         RectTransform contentRect = contentObject.GetComponent<RectTransform>();
-        contentRect.anchorMin = new Vector2(0.08f, 0.11f);
-        contentRect.anchorMax = new Vector2(0.67f, 0.55f);
+        contentRect.anchorMin = Vector2.zero;
+        contentRect.anchorMax = Vector2.one;
         contentRect.offsetMin = contentRect.offsetMax = Vector2.zero;
         CanvasGroup content = contentObject.GetComponent<CanvasGroup>();
 
-        TMP_Text eyebrow = Text("Intro Day", contentObject.transform, font,
-            "수요일, 새로운 2주가 시작됐다", 26, FontStyles.Normal);
-        eyebrow.color = new Color(0.55f, 0.75f, 1f);
-        SetRect(eyebrow.rectTransform, new Vector2(0f, 330f), new Vector2(940f, 50f));
-        TMP_Text title = Text("Intro Title", contentObject.transform, font, "한 번만 해볼까", 76, FontStyles.Bold);
+        TMP_Text title = Text("Intro Title", contentObject.transform, font, "할래말래", 112, FontStyles.Bold);
         title.color = Color.white;
-        SetRect(title.rectTransform, new Vector2(0f, 205f), new Vector2(980f, 115f));
-        TMP_Text body = Text("Intro Body", contentObject.transform, font,
-            "학교, 과제, 아르바이트. 평소와 다를 것 없던 일상에\n친구의 메시지 하나가 도착했다.", 31, FontStyles.Normal);
-        body.color = new Color(0.84f, 0.89f, 0.95f);
-        body.lineSpacing = 12f;
-        SetRect(body.rectTransform, new Vector2(0f, 78f), new Vector2(1030f, 110f));
+        title.alignment = TextAlignmentOptions.Center;
+        SetCenteredRect(title.rectTransform, new Vector2(0f, 120f), new Vector2(920f, 170f));
 
-        Button startButton = Button("Start Game", contentObject.transform, font, "시작하기");
+        Button startButton = Button("Start Game", contentObject.transform, font, "게임하기");
         RectTransform buttonRect = startButton.GetComponent<RectTransform>();
-        buttonRect.anchorMin = buttonRect.anchorMax = Vector2.zero;
-        buttonRect.pivot = Vector2.zero;
-        buttonRect.anchoredPosition = Vector2.zero;
-        buttonRect.sizeDelta = new Vector2(310f, 76f);
+        SetCenteredRect(buttonRect, new Vector2(0f, -78f), new Vector2(340f, 78f));
 
         GameObject controllerObject = new GameObject("Intro Scene Controller");
         IntroSceneController controller = controllerObject.AddComponent<IntroSceneController>();
@@ -115,11 +104,11 @@ public static class IntroSceneBuilder
         GameObject go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Button));
         go.transform.SetParent(parent, false);
         Image image = go.GetComponent<Image>();
-        image.color = new Color(0.12f, 0.42f, 0.76f, 0.98f);
+        image.color = new Color(0.67f, 0.14f, 0.18f, 0.98f);
         Button button = go.GetComponent<Button>();
         ColorBlock colors = button.colors;
-        colors.highlightedColor = new Color(0.18f, 0.52f, 0.9f);
-        colors.pressedColor = new Color(0.08f, 0.3f, 0.62f);
+        colors.highlightedColor = new Color(0.8f, 0.2f, 0.24f);
+        colors.pressedColor = new Color(0.48f, 0.08f, 0.11f);
         button.colors = colors;
         TMP_Text text = Text("Label", go.transform, font, label, 28, FontStyles.Bold);
         text.alignment = TextAlignmentOptions.Center;
@@ -139,6 +128,14 @@ public static class IntroSceneBuilder
     {
         rect.anchorMin = rect.anchorMax = Vector2.zero;
         rect.pivot = Vector2.zero;
+        rect.anchoredPosition = position;
+        rect.sizeDelta = size;
+    }
+
+    private static void SetCenteredRect(RectTransform rect, Vector2 position, Vector2 size)
+    {
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
         rect.anchoredPosition = position;
         rect.sizeDelta = size;
     }
