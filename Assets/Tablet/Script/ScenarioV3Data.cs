@@ -59,6 +59,8 @@ public sealed class ScenarioV3Scene
 
 public sealed class ScenarioV3Database
 {
+    private const string ResourceBaseName = "ScenarioV5";
+
     private readonly Dictionary<string, ScenarioV3Scene> scenes =
         new Dictionary<string, ScenarioV3Scene>(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, List<ScenarioV3Scene>> scenesByTrigger =
@@ -73,14 +75,14 @@ public sealed class ScenarioV3Database
 
     public static ScenarioV3Database Load()
     {
-        TextAsset asset = Resources.Load<TextAsset>("ScenarioV3");
+        TextAsset asset = Resources.Load<TextAsset>(ResourceBaseName);
         if (asset == null)
-            throw new InvalidOperationException("Assets/Resources/ScenarioV3.csv를 찾을 수 없습니다.");
+            throw new InvalidOperationException($"Assets/Resources/{ResourceBaseName}.csv를 찾을 수 없습니다.");
 
         var database = new ScenarioV3Database();
         List<List<string>> records = ParseCsv(asset.text);
         if (records.Count < 2)
-            throw new InvalidOperationException("ScenarioV3.csv에 데이터가 없습니다.");
+            throw new InvalidOperationException($"{ResourceBaseName}.csv에 데이터가 없습니다.");
 
         var columns = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < records[0].Count; i++)
@@ -171,7 +173,7 @@ public sealed class ScenarioV3Database
 
     private static void ApplyReplyTexts(ScenarioV3Database database, HashSet<string> choiceIds)
     {
-        TextAsset replyAsset = Resources.Load<TextAsset>("ScenarioV3Replies");
+        TextAsset replyAsset = Resources.Load<TextAsset>(ResourceBaseName + "Replies");
         if (replyAsset == null)
             return;
 
@@ -195,14 +197,14 @@ public sealed class ScenarioV3Database
             if (string.IsNullOrWhiteSpace(choiceId) || string.IsNullOrWhiteSpace(replyText))
                 continue;
             if (!choiceIds.Contains(choiceId) || !choicesById.TryGetValue(choiceId, out ScenarioV3Choice choice))
-                throw new InvalidOperationException($"ScenarioV3Replies.csv가 없는 선택지 {choiceId}을 참조합니다.");
+                throw new InvalidOperationException($"{ResourceBaseName}Replies.csv가 없는 선택지 {choiceId}을 참조합니다.");
             choice.replyText = replyText;
         }
     }
 
     private static void ApplyLineTextOverrides(ScenarioV3Database database)
     {
-        TextAsset textAsset = Resources.Load<TextAsset>("ScenarioV3Narration");
+        TextAsset textAsset = Resources.Load<TextAsset>(ResourceBaseName + "Narration");
         if (textAsset == null)
             return;
 
@@ -225,7 +227,7 @@ public sealed class ScenarioV3Database
             if (string.IsNullOrWhiteSpace(lineId) || string.IsNullOrWhiteSpace(text))
                 continue;
             if (!linesById.TryGetValue(lineId, out ScenarioV3Line line))
-                throw new InvalidOperationException($"ScenarioV3Narration.csv가 없는 대사 {lineId}을 참조합니다.");
+                throw new InvalidOperationException($"{ResourceBaseName}Narration.csv가 없는 대사 {lineId}을 참조합니다.");
             if (string.IsNullOrWhiteSpace(line.text))
                 line.text = text;
         }
@@ -262,7 +264,7 @@ public sealed class ScenarioV3Database
 
     private static void ApplyCheckpointDefinitions(ScenarioV3Database database)
     {
-        TextAsset asset = Resources.Load<TextAsset>("ScenarioV3Checkpoints");
+        TextAsset asset = Resources.Load<TextAsset>(ResourceBaseName + "Checkpoints");
         if (asset == null)
             return;
 
@@ -285,14 +287,14 @@ public sealed class ScenarioV3Database
             string choiceId = Read(rows[rowIndex], columns, "choice_id");
             string label = Read(rows[rowIndex], columns, "label");
             if (!knownChoices.Contains(choiceId))
-                throw new InvalidOperationException($"ScenarioV3Checkpoints.csv가 없는 선택지 {choiceId}을 참조합니다.");
+                throw new InvalidOperationException($"{ResourceBaseName}Checkpoints.csv가 없는 선택지 {choiceId}을 참조합니다.");
             database.checkpointLabels[choiceId] = label;
         }
     }
 
     private static void ApplyFlowBindings(ScenarioV3Database database)
     {
-        TextAsset flowAsset = Resources.Load<TextAsset>("ScenarioV3Flow");
+        TextAsset flowAsset = Resources.Load<TextAsset>(ResourceBaseName + "Flow");
         if (flowAsset == null)
             return;
 
@@ -311,7 +313,7 @@ public sealed class ScenarioV3Database
             string returnToTablet = Read(rows[rowIndex], columns, "return_to_tablet");
             ScenarioV3Scene scene = database.GetScene(sceneId);
             if (scene == null)
-                throw new InvalidOperationException($"ScenarioV3Flow.csv가 없는 장면 {sceneId}을 참조합니다.");
+                throw new InvalidOperationException($"{ResourceBaseName}Flow.csv가 없는 장면 {sceneId}을 참조합니다.");
 
             if (string.Equals(returnToTablet, "true", StringComparison.OrdinalIgnoreCase))
                 database.returnToTabletScenes.Add(sceneId);

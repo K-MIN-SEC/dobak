@@ -60,7 +60,8 @@ public sealed class ScenarioV3SaveData
 
 public sealed class ScenarioV3Director : MonoBehaviour
 {
-    private const int FinalDay = 14;
+    private const int FinalDay = 5;
+    private const int StartingCash = 150000;
 
     private readonly Dictionary<string, string> state =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -233,6 +234,11 @@ public sealed class ScenarioV3Director : MonoBehaviour
             {
                 SetState("schedule.school", "missed");
                 AddInt("counter.school_absences", 1);
+            }
+            if (flow.V3HasStudyToday && GetState("schedule.homework") == "pending")
+            {
+                SetState("schedule.homework", "missed");
+                AddInt("counter.homework_failures", 1);
             }
         }
         else if (trigger == "job_complete")
@@ -814,7 +820,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
         state["schedule_failures"] = "0";
         state["cash_delta_today"] = "0";
         state["unread_count"] = "0";
-        state["day_cash_start"] = "50000";
+        state["day_cash_start"] = StartingCash.ToString(CultureInfo.InvariantCulture);
         state["day_finalized"] = "0";
         state["counter.job_attendance"] = "0";
         state["counter.gamble_sessions"] = "0";
@@ -835,7 +841,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
         state["flag.minjae_first_invite_read"] = "false";
         state["relation.seoyeon"] = "0";
         state["relation.manager"] = "0";
-        flow.V3ResetRun(50000);
+        flow.V3ResetRun(StartingCash);
         ClearSavedRun();
         Save();
     }
@@ -2102,7 +2108,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
         if (GetState("day_finalized") == "1")
             return;
 
-        int previousCash = GetInt("day_cash_start", 50000);
+        int previousCash = GetInt("day_cash_start", StartingCash);
         state["cash_delta_today"] = (flow.V3BankCash - previousCash).ToString(CultureInfo.InvariantCulture);
         state["previous.homework_status"] = GetState("schedule.homework");
         bool weekendDay = flow.IsWeekend;
@@ -2517,10 +2523,10 @@ public sealed class ScenarioV3Director : MonoBehaviour
         string endingId = GetState("ending");
         string title = endingId switch
         {
-            "recovery" => "회복을 시작한 날",
-            "prevented" => "일상을 선택한 시간",
-            "no_help" => "말하지 못한 문제",
-            "collapse" => "무너진 일상",
+            "recovery" => "회복 시작",
+            "prevented" => "예방 성공",
+            "no_help" => "위험 지속",
+            "collapse" => "일상 붕괴",
             _ => "남겨진 문제"
         };
         string body = string.Join("\n\n", scene.lines.Select(line => ExpandText(line.text)));

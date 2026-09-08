@@ -19,7 +19,7 @@ using UnityEngine.UI;
 public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
 {
     private const string TabletSceneName = "TabletUI";
-    private const string PatchVersion = "V26.1-TransitionQaFix";
+    private const string PatchVersion = "V27.0-FiveDayCampaign";
 
     private GameFlowManager flow;
     private ScenarioV3Director director;
@@ -250,7 +250,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             // 평일 밤샘 장면. 주말은 아래의 별도 장면에서 카페 결근으로 안내한다.
             lateMorningScene.arc = "main";
             lateMorningScene.condition =
-                "flag.gambled_late=true;flag.borrow_deferred!=true;day!=4;day!=5;day!=11;day!=12";
+                "flag.gambled_late=true;flag.borrow_deferred!=true;day!=2;day!=3";
         }
 
         ScenarioV3Line lateMorningFirst = FindLine("sys_late_gamble_morning_01");
@@ -264,10 +264,10 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         {
             id = "sys_late_gamble_morning_weekend",
             arc = "main",
-            day = "2..14",
+            day = "2..5",
             timeWindow = "7:00",
             trigger = "day_start",
-            condition = "flag.gambled_late=true;flag.borrow_deferred!=true;day=4|day=5|day=11|day=12",
+            condition = "flag.gambled_late=true;flag.borrow_deferred!=true;day=2|day=3",
             priority = 203,
             onceScope = "day",
             purpose = "주말 밤샘 뒤 오전 10시 기상과 카페 결근을 명확히 안내한다."
@@ -3351,9 +3351,9 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             return;
         }
 
-        // F8: 2일차 목요일 06:00 -> 한 판 뒤 3일차 평일 아침 검증
-        // F9: 10일차 금요일 06:00 -> 한 판 뒤 11일차 주말 아침 검증
-        int targetDay = weekendMorning ? 10 : 2;
+        // F8: 3일차 일요일 06:00 -> 한 판 뒤 4일차 평일 아침 검증
+        // F9: 1일차 금요일 06:00 -> 한 판 뒤 2일차 주말 아침 검증
+        int targetDay = weekendMorning ? 1 : 3;
         appWindow?.CloseCurrentApp();
         choiceOverlay?.SetActive(false);
         dialogue.ResetScenarioConversations();
@@ -3405,8 +3405,8 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         InvokePrivate(director, "Save");
 
         string result = weekendMorning
-            ? "F9 주말 밤샘 QA 준비 완료. 지금 도박 앱을 눌러 ‘한다’를 선택하면 11일차 토요일 오전 흐름을 확인할 수 있습니다."
-            : "F8 평일 밤샘 QA 준비 완료. 지금 도박 앱을 눌러 ‘한다’를 선택하면 3일차 금요일 오전 흐름을 확인할 수 있습니다.";
+            ? "F9 주말 밤샘 QA 준비 완료. 지금 도박 앱을 눌러 ‘한다’를 선택하면 2일차 토요일 오전 흐름을 확인할 수 있습니다."
+            : "F8 평일 밤샘 QA 준비 완료. 지금 도박 앱을 눌러 ‘한다’를 선택하면 4일차 월요일 오전 흐름을 확인할 수 있습니다.";
         flow.V3ShowDialogue("QA", result, null);
     }
 #endif

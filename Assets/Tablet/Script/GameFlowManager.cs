@@ -14,7 +14,7 @@ public sealed class GameFlowManager : MonoBehaviour
 {
     public static GameFlowManager Instance { get; private set; }
 
-    private const int FinalDay = 14;
+    private const int FinalDay = 5;
     private const int DayStartHour = 7;
     private const int CollapseFailureLimit = 3;
     private const int DebtEndingThreshold = 150000;
@@ -736,7 +736,9 @@ public sealed class GameFlowManager : MonoBehaviour
         });
         activeStoryEvent = "";
 
-        bool requiredDone = IsWeekend ? jobDone : schoolDone && homeworkDone;
+        bool requiredDone = IsWeekend
+            ? jobDone
+            : schoolDone && (!V3HasStudyToday || homeworkDone);
         if (!requiredDone)
         {
             scheduleFailureDays++;
@@ -2423,7 +2425,9 @@ public sealed class GameFlowManager : MonoBehaviour
     }
 
     private static string Mark(bool completed) => completed ? "[완료]" : "[  ]";
-    private static int GetWeekdayIndex(int day) => (day + 1) % 7;
+    // The compressed campaign runs from Friday through Tuesday so both school
+    // and the two weekend job shifts remain meaningful schedule choices.
+    private static int GetWeekdayIndex(int day) => (day + 3) % 7;
 
     private static string GetWeekdayName(int day)
     {
