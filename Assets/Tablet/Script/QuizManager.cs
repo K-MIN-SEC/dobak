@@ -382,9 +382,7 @@ public class QuizManager : MonoBehaviour
             ? new List<StudyActivityQuestion>(rows)
             : new List<StudyActivityQuestion>();
         ResetProgress();
-        if (!isWeekday)
-            ShowUnavailable("주말에는 조별과제 일정이 없습니다.\n오늘은 알바 일정을 확인해 보자.", "주말");
-        else if (currentQuestions.Count == 0)
+        if (currentQuestions.Count == 0)
             ShowUnavailable("오늘 진행할 숙제나 조별과제 일정은 없습니다.", "일정 없음");
         else
             ShowActivityPrelude();

@@ -102,6 +102,9 @@ public sealed class GameFlowManager : MonoBehaviour
     private readonly Queue<(string title, string body, Action onClosed)> narrationQueue =
         new Queue<(string title, string body, Action onClosed)>();
     private Action activeNarrationClosed;
+    private Coroutine narrationTypewriterCoroutine;
+    private string activeNarrationBody = string.Empty;
+    private bool isNarrationTyping;
 
     private bool schoolDone;
     private bool homeworkDone;
@@ -607,7 +610,7 @@ public sealed class GameFlowManager : MonoBehaviour
 
     private void CompleteHomework(int correctAnswers, int totalQuestions)
     {
-        if (homeworkDone || IsWeekend || gameEnded)
+        if (homeworkDone || gameEnded)
             return;
 
         homeworkDone = true;
@@ -617,9 +620,9 @@ public sealed class GameFlowManager : MonoBehaviour
         if (scenarioV3 != null)
         {
             V3AddMinutes(120);
-            // 공부가 끝났으면 결과 화면을 계속 붙잡지 않고 태블릿 홈으로 복귀한다.
-            appWindow?.CloseCurrentApp();
             scenarioV3.HandleExternalAction("homework_complete");
+            // 완료 장면을 먼저 예약해야 앱 닫힘 콜백이 저녁 장면을 선점하지 않는다.
+            appWindow?.CloseCurrentApp();
         }
         else
         {
@@ -647,6 +650,13 @@ public sealed class GameFlowManager : MonoBehaviour
         {
             ShowFeedback("학교 수업을 마친 뒤 오늘의 숙제를 풀 수 있습니다.");
             TriggerScenario("study_locked");
+            return false;
+        }
+
+        if (IsWeekend && !jobDone)
+        {
+            ShowFeedback("오늘 알바 일정을 먼저 해결한 뒤 조별과제를 진행하자.");
+            V3MarkAppAttention(AppType.Map);
             return false;
         }
 
@@ -738,7 +748,7 @@ public sealed class GameFlowManager : MonoBehaviour
         activeStoryEvent = "";
 
         bool requiredDone = IsWeekend
-            ? jobDone
+            ? jobDone && (!V3HasStudyToday || homeworkDone)
             : schoolDone && (!V3HasStudyToday || homeworkDone);
         if (!requiredDone)
         {
@@ -832,7 +842,7 @@ public sealed class GameFlowManager : MonoBehaviour
     }
 
     public bool IsDailyScheduleComplete => IsWeekend
-        ? jobDone
+        ? jobDone && (!V3HasStudyToday || homeworkDone)
         : schoolDone && (!V3HasStudyToday || homeworkDone);
 
     public bool IsSleepHour => currentHour >= 21 || currentHour < DayStartHour;
@@ -1100,9 +1110,14 @@ public sealed class GameFlowManager : MonoBehaviour
         (string title, string body, Action onClosed) = narrationQueue.Dequeue();
         activeNarrationClosed = onClosed;
         narrationTitleText.text = title;
+        activeNarrationBody = body;
         narrationBodyText.text = body;
+        narrationBodyText.maxVisibleCharacters = 0;
         narrationPanel.SetActive(true);
         narrationPanel.transform.SetAsLastSibling();
+        if (narrationTypewriterCoroutine != null)
+            StopCoroutine(narrationTypewriterCoroutine);
+        narrationTypewriterCoroutine = StartCoroutine(TypeNarration());
     }
 
     private void CloseNarration()
@@ -1110,11 +1125,43 @@ public sealed class GameFlowManager : MonoBehaviour
         if (narrationPanel == null)
             return;
 
+        if (isNarrationTyping)
+        {
+            CompleteNarrationTypewriter();
+            return;
+        }
+
         narrationPanel.SetActive(false);
         Action callback = activeNarrationClosed;
         activeNarrationClosed = null;
         callback?.Invoke();
         ShowNextNarration();
+    }
+
+    private IEnumerator TypeNarration()
+    {
+        isNarrationTyping = true;
+        yield return null;
+        int total = narrationBodyText.textInfo.characterCount;
+        for (int visible = 1; visible <= total; visible++)
+        {
+            narrationBodyText.maxVisibleCharacters = visible;
+            char character = visible - 1 < activeNarrationBody.Length ? activeNarrationBody[visible - 1] : ' ';
+            yield return new WaitForSecondsRealtime(char.IsWhiteSpace(character) ? 0.006f : 0.026f);
+        }
+        CompleteNarrationTypewriter();
+    }
+
+    private void CompleteNarrationTypewriter()
+    {
+        if (narrationTypewriterCoroutine != null)
+        {
+            StopCoroutine(narrationTypewriterCoroutine);
+            narrationTypewriterCoroutine = null;
+        }
+        isNarrationTyping = false;
+        narrationBodyText.text = activeNarrationBody;
+        narrationBodyText.maxVisibleCharacters = int.MaxValue;
     }
 
     private void SendOnce(string key, string title, string message, SpeakerType speaker)
@@ -1191,6 +1238,13 @@ public sealed class GameFlowManager : MonoBehaviour
             return;
 
         gameEnded = true;
+        if (narrationTypewriterCoroutine != null)
+        {
+            StopCoroutine(narrationTypewriterCoroutine);
+            narrationTypewriterCoroutine = null;
+        }
+        isNarrationTyping = false;
+        activeNarrationBody = string.Empty;
         narrationQueue.Clear();
         activeNarrationClosed = null;
         if (narrationPanel != null)
@@ -1229,6 +1283,13 @@ public sealed class GameFlowManager : MonoBehaviour
 
     public void V3ResetRun(int startingCash)
     {
+        if (narrationTypewriterCoroutine != null)
+        {
+            StopCoroutine(narrationTypewriterCoroutine);
+            narrationTypewriterCoroutine = null;
+        }
+        isNarrationTyping = false;
+        activeNarrationBody = string.Empty;
         currentDay = 1;
         currentHour = DayStartHour;
         currentLocation = "집";
@@ -1597,7 +1658,7 @@ public sealed class GameFlowManager : MonoBehaviour
                 () => V3MarkAppAttention(AppType.Map));
             return;
         }
-        if (!IsWeekend && V3HasStudyToday && !homeworkDone)
+        if (V3HasStudyToday && !homeworkDone)
         {
             V3ShowDialogue("나", "(아직 오늘 해야 할 일이 남아 있다. 공부부터 끝내자.)",
                 () => V3MarkAppAttention(AppType.Study));
@@ -1623,7 +1684,7 @@ public sealed class GameFlowManager : MonoBehaviour
                 visible |= (scenarioV3 != null && scenarioV3.HasUnreadMessageAttention) ||
                            (dialogueManager != null && dialogueManager.TotalUnreadCount > 0);
             else if (pair.Key == AppType.Study)
-                visible |= !IsWeekend && schoolDone && V3HasStudyToday && !homeworkDone;
+                visible |= V3HasStudyToday && !homeworkDone && (IsWeekend ? jobDone : schoolDone);
             else if (pair.Key == AppType.Sleep)
                 visible |= IsSleepHour && currentLocation == "집" && !sleepDone;
             pair.Value.SetActive(visible);
@@ -1671,7 +1732,7 @@ public sealed class GameFlowManager : MonoBehaviour
         if (homeChecklistLines.Count == 0)
             return;
 
-        string goalLine = $"노트북 수리비  {V3BankCash:N0} / 250,000원";
+        string goalLine = $"노트북 수리비  {V3BankCash:N0} / 150,000원";
         string debtLine = debt > 0 ? $"빌린 돈  {debt:N0}원" : "";
         bool knowsProject = scenarioV3 == null || currentDay > 1 || schoolDone ||
                             string.Equals(scenarioV3.GetState("flag.project_introduced"), "true", StringComparison.OrdinalIgnoreCase);
@@ -1687,9 +1748,9 @@ public sealed class GameFlowManager : MonoBehaviour
             ? new[]
             {
                 $"{jobMark} 카페 알바  08:00~16:00",
+                studyLine,
                 goalLine,
-                debtLine,
-                ""
+                debtLine
             }
             : new[]
             {

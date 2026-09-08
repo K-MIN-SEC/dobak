@@ -67,6 +67,7 @@ public static class ScenarioV4FullPlayQa
     private static bool preventedReturnHomeObserved;
     private static string expectedConsecutiveGambleScene = string.Empty;
     private static string lastBlockingDialogue = string.Empty;
+    private static readonly HashSet<string> observedScenes = new HashSet<string>();
 
     private const double UiSettleDelay = 0.12d;
     private const double SceneSettleDelay = 0.7d;
@@ -153,6 +154,7 @@ public static class ScenarioV4FullPlayQa
         preventedReturnHomeObserved = false;
         expectedConsecutiveGambleScene = string.Empty;
         lastBlockingDialogue = string.Empty;
+        observedScenes.Clear();
         pendingMapTarget = string.Empty;
         lastLine = string.Empty;
         lastCapturedScene = string.Empty;
@@ -303,6 +305,7 @@ public static class ScenarioV4FullPlayQa
             }
             if (route == Route.Recovery)
             {
+                ExpectWeekendScheduleScenes("done");
                 Expect(director.GetState("ending") == "recovery", $"Expected recovery ending, got {director.GetState("ending")}.");
                 Expect(director.GetState("flag.help_requested") == "true", "Teacher counseling was not requested.");
                 Expect(int.Parse(director.GetState("counter.gamble_sessions")) >= 3,
@@ -322,6 +325,7 @@ public static class ScenarioV4FullPlayQa
             }
             else if (route == Route.NoHelp)
             {
+                ExpectWeekendScheduleScenes("missed");
                 Expect(director.GetState("ending") == "no_help", $"Expected no-help ending, got {director.GetState("ending")}.");
                 Expect(director.GetState("flag.help_requested") != "true", "No-help route unexpectedly requested counseling.");
                 Expect(int.Parse(director.GetState("counter.gamble_sessions")) >= 3,
@@ -373,6 +377,7 @@ public static class ScenarioV4FullPlayQa
 
         if (!string.IsNullOrEmpty(director.ActiveSceneId))
         {
+            observedScenes.Add(director.ActiveSceneId);
             if (!string.IsNullOrEmpty(expectedConsecutiveGambleScene))
             {
                 Expect(director.ActiveSceneId == expectedConsecutiveGambleScene,
@@ -487,6 +492,19 @@ public static class ScenarioV4FullPlayQa
                 if (skipShift)
                     flow.V3SetClock("14:00");
                 BeginMapAction(apps, "카페");
+                return;
+            }
+            if (flow.V3HasStudyToday && !flow.IsHomeworkDone)
+            {
+                if (flow.CurrentLocation != "집")
+                {
+                    BeginMapAction(apps, "집");
+                    return;
+                }
+
+                OpenAppImmediate(apps, AppType.Study);
+                quizOpen = true;
+                nextActionAt = EditorApplication.timeSinceStartup + SceneSettleDelay;
                 return;
             }
         }
@@ -862,27 +880,22 @@ public static class ScenarioV4FullPlayQa
         if (capturedQuizDays.Add(flow.CurrentDay))
             Capture($"quiz-day-{flow.CurrentDay:00}.png");
 
-        Button correct = available.FirstOrDefault(button => IsCorrectQuizAnswer(button.GetComponentInChildren<TMP_Text>().text));
-        if (correct == null)
+        List<StudyActivityQuestion> questions = GetPrivate<List<StudyActivityQuestion>>(quiz, "currentQuestions");
+        int questionIndex = GetPrivateValue<int>(quiz, "currentIndex");
+        StudyActivityQuestion currentQuestion = questions != null && questionIndex >= 0 && questionIndex < questions.Count
+            ? questions[questionIndex]
+            : null;
+        Button correct = currentQuestion != null && currentQuestion.answerIndex >= 0 &&
+                         currentQuestion.answerIndex < answers.Length
+            ? answers[currentQuestion.answerIndex]
+            : null;
+        if (correct == null || !correct.gameObject.activeInHierarchy || !correct.interactable)
         {
-            Fail($"Correct quiz answer was not found on day {flow.CurrentDay}.");
+            Fail($"Correct quiz answer was not available on day {flow.CurrentDay}, question {questionIndex + 1}.");
             return;
         }
         correct.onClick.Invoke();
         nextActionAt = EditorApplication.timeSinceStartup + SceneSettleDelay;
-    }
-
-    private static bool IsCorrectQuizAnswer(string text)
-    {
-        text = (text ?? string.Empty).Replace('\n', ' ').Replace('\r', ' ');
-        return text == "1336" ||
-               text.Contains("조사할 시간과 순서를 정한다") ||
-               text.Contains("손실을 만회하려 돈을 빌렸다") ||
-               text.Contains("일정에 적어 둔다") ||
-               text.Contains("친구에게 돈을 빌렸다") ||
-               text.Contains("레벨·출석 보상") ||
-               text.Contains("돈이나 재산상 가치") ||
-               text.Contains("1336 상담에 연결한다");
     }
 
     private static bool ShouldCaptureScene(string scene)
@@ -951,15 +964,23 @@ public static class ScenarioV4FullPlayQa
 
     private static void DismissNarration(GameFlowManager flow)
     {
-        FieldInfo panelField = typeof(GameFlowManager).GetField("narrationPanel",
-            BindingFlags.Instance | BindingFlags.NonPublic);
-        FieldInfo callbackField = typeof(GameFlowManager).GetField("activeNarrationClosed",
-            BindingFlags.Instance | BindingFlags.NonPublic);
-        (panelField?.GetValue(flow) as GameObject)?.SetActive(false);
-        Action callback = callbackField?.GetValue(flow) as Action;
-        callbackField?.SetValue(flow, null);
-        callback?.Invoke();
-        InvokePrivate(flow, "ShowNextNarration");
+        InvokePrivate(flow, "CloseNarration");
+        InvokePrivate(flow, "CloseNarration");
+    }
+
+    private static void ExpectWeekendScheduleScenes(string suffix)
+    {
+        string[] expected =
+        {
+            $"v5_d2_study_cue_{suffix}",
+            "v5_d2_study_done",
+            $"v5_d2_night_{suffix}",
+            $"v5_d3_case_cue_{suffix}",
+            "v5_d3_study_done",
+            $"v5_d3_night_{suffix}"
+        };
+        foreach (string scene in expected)
+            Expect(observedScenes.Contains(scene), $"Weekend schedule scene was not played: {scene}.");
     }
 
     private static void Expect(bool condition, string message)

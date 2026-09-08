@@ -44,6 +44,11 @@ public static class CodexSubmissionQaRunner
             Debug.Log("[CODEX SUBMISSION QA] Starting no-help route.");
             ScenarioV4FullPlayQa.RunNoHelp();
         }
+        else if (string.Equals(mode, "recovery", System.StringComparison.OrdinalIgnoreCase))
+        {
+            Debug.Log("[CODEX SUBMISSION QA] Starting recovery route.");
+            ScenarioV4FullPlayQa.RunRecovery();
+        }
         else if (string.Equals(mode, "project-fail", System.StringComparison.OrdinalIgnoreCase))
         {
             Debug.Log("[CODEX SUBMISSION QA] Starting project-failure route.");

@@ -61,7 +61,7 @@ public sealed class ScenarioV3SaveData
 public sealed class ScenarioV3Director : MonoBehaviour
 {
     private const int FinalDay = 5;
-    private const int StartingCash = 150000;
+    private const int StartingCash = 50000;
 
     private readonly Dictionary<string, string> state =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -244,7 +244,10 @@ public sealed class ScenarioV3Director : MonoBehaviour
         else if (trigger == "job_complete")
             SetState("schedule.job", "complete");
         else if (trigger == "job_missed")
+        {
             SetState("schedule.job", "missed");
+            flow.V3SetSchedule("job", "missed");
+        }
 
         PlayTrigger(trigger);
         if (activeScene == null && sceneQueue.Count == 0)
@@ -1797,6 +1800,16 @@ public sealed class ScenarioV3Director : MonoBehaviour
 
     private void ContinueAfterActivityReturn()
     {
+        if (flow.IsWeekend && GetState("schedule.job") == "complete" &&
+            flow.V3HasStudyToday && GetState("schedule.homework") == "pending")
+        {
+            int queued = QueueTrigger("post_job_home", null);
+            if (queued > 0)
+            {
+                StartQueuedScene();
+                return;
+            }
+        }
         if (TryQueueEveningFill())
             return;
         if (TryQueueBedtimeCue())
@@ -1831,7 +1844,12 @@ public sealed class ScenarioV3Director : MonoBehaviour
     private bool IsDailyScheduleResolvedForEvening()
     {
         if (flow.IsWeekend)
-            return flow.IsJobDone || GetState("schedule.job") == "missed";
+        {
+            bool jobResolved = flow.IsJobDone || GetState("schedule.job") == "missed";
+            bool weekendStudyResolved = !flow.V3HasStudyToday || flow.IsHomeworkDone ||
+                                        GetState("schedule.homework") == "missed";
+            return jobResolved && weekendStudyResolved;
+        }
 
         bool schoolResolved = flow.IsSchoolDone || GetState("schedule.school") == "missed";
         bool studyResolved = !flow.V3HasStudyToday || flow.IsHomeworkDone ||
@@ -1866,6 +1884,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
             return false;
 
         SetState("schedule.job", "missed");
+        flow.V3SetSchedule("job", "missed");
         appWindow?.CloseCurrentApp();
         int queued = QueueTrigger("job_missed", null);
         Save();
@@ -2137,7 +2156,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
             SetState("schedule.school", "missed");
             AddInt("counter.school_absences", 1);
         }
-        if (!weekendDay && flow.V3HasStudyToday && GetState("schedule.homework") == "pending")
+        if (flow.V3HasStudyToday && GetState("schedule.homework") == "pending")
         {
             SetState("schedule.homework", "missed");
             AddInt("counter.homework_failures", 1);
@@ -2150,7 +2169,8 @@ public sealed class ScenarioV3Director : MonoBehaviour
             AddInt("counter.job_failures", 1);
 
         bool requiredDone = weekendDay
-            ? GetState("schedule.job") == "complete"
+            ? GetState("schedule.job") == "complete" &&
+              (!flow.V3HasStudyToday || GetState("schedule.homework") == "complete")
             : GetState("schedule.school") == "complete" &&
               (!flow.V3HasStudyToday || GetState("schedule.homework") == "complete");
         if (!requiredDone && flow.CurrentDay < FinalDay)
@@ -2667,7 +2687,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
         historyLayout.childForceExpandWidth = true;
         ContentSizeFitter contentFitter = content.AddComponent<ContentSizeFitter>();
         contentFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-        historyText = Text("History Text", content.transform, font, 25, FontStyles.Bold, new Color(0.9f, 0.93f, 0.98f));
+        historyText = Text("History Text", content.transform, font, 34, FontStyles.Bold, new Color(0.9f, 0.93f, 0.98f));
         historyText.alignment = TextAlignmentOptions.TopLeft;
         historyText.rectTransform.anchorMin = new Vector2(0f, 1f);
         historyText.rectTransform.anchorMax = new Vector2(1f, 1f);
@@ -2810,6 +2830,8 @@ public sealed class ScenarioV3Director : MonoBehaviour
 
         historyText = boundText;
         historyText.gameObject.SetActive(true);
+        historyText.enableAutoSizing = false;
+        historyText.fontSize = bodyText != null ? bodyText.fontSize : 34f;
         historyText.alignment = TextAlignmentOptions.TopLeft;
         historyText.textWrappingMode = TextWrappingModes.Normal;
         historyText.overflowMode = TextOverflowModes.Overflow;
