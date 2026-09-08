@@ -24,7 +24,16 @@ public static class ScenarioV4FullPlayQa
         Route.Recovery,
         Route.Prevention,
         Route.NoGamble,
-        Route.NoHelp
+        Route.NoHelp,
+        Route.NoFunds,
+        Route.MinjaeDebt,
+        Route.SeojunDebt,
+        Route.LoanHeld,
+        Route.RepeatLoss,
+        Route.ProjectFail,
+        Route.MixedA,
+        Route.MixedB,
+        Route.MixedC
     };
 
     private const string MainScene = "Assets/Tablet/TabletUI.unity";
@@ -48,6 +57,7 @@ public static class ScenarioV4FullPlayQa
     private static EnterPlayModeOptions previousOptions;
     private static bool runAllRoutes;
     private static bool anyRouteFailed;
+    private static Route? queuedRoute;
     private static int observedDay;
     private static bool routeCompleted;
     private static bool repeatLossObserved;
@@ -68,11 +78,39 @@ public static class ScenarioV4FullPlayQa
     public static void RunNoHelp() => Run(Route.NoHelp);
     public static void RunNoFunds() => Run(Route.NoFunds);
     public static void RunProjectFail() => Run(Route.ProjectFail);
+    public static void RunRepeatLoss() => Run(Route.RepeatLoss);
     public static void RunAll()
     {
         runAllRoutes = true;
         anyRouteFailed = false;
+        queuedRoute = null;
         Run(Route.Recovery);
+    }
+
+    public static void ResumeQueuedRoute()
+    {
+        if (!queuedRoute.HasValue || EditorApplication.isPlaying ||
+            EditorApplication.isPlayingOrWillChangePlaymode)
+            return;
+
+        Route next = queuedRoute.Value;
+        queuedRoute = null;
+        Run(next);
+    }
+
+    private static void ResumeQueuedRouteWhenReady()
+    {
+        if (!queuedRoute.HasValue)
+        {
+            EditorApplication.update -= ResumeQueuedRouteWhenReady;
+            return;
+        }
+
+        if (EditorApplication.isPlaying || EditorApplication.isPlayingOrWillChangePlaymode)
+            return;
+
+        EditorApplication.update -= ResumeQueuedRouteWhenReady;
+        ResumeQueuedRoute();
     }
 
     public static void RunRemainingFromNoHelp()
@@ -164,8 +202,9 @@ public static class ScenarioV4FullPlayQa
             int routeIndex = Array.IndexOf(AllRoutes, route);
             if (runAllRoutes && routeIndex >= 0 && routeIndex < AllRoutes.Length - 1)
             {
-                Route nextRoute = AllRoutes[routeIndex + 1];
-                EditorApplication.delayCall += () => Run(nextRoute);
+                queuedRoute = AllRoutes[routeIndex + 1];
+                EditorApplication.update -= ResumeQueuedRouteWhenReady;
+                EditorApplication.update += ResumeQueuedRouteWhenReady;
                 return;
             }
 
@@ -175,6 +214,7 @@ public static class ScenarioV4FullPlayQa
                     ? "[SCENARIO V4 ALL ROUTES QA] FAIL"
                     : "[SCENARIO V4 ALL ROUTES QA] PASS");
                 runAllRoutes = false;
+                queuedRoute = null;
             }
             if (Application.isBatchMode)
                 EditorApplication.Exit(anyRouteFailed ? 2 : 0);
@@ -211,14 +251,26 @@ public static class ScenarioV4FullPlayQa
                 BindingFlags.Instance | BindingFlags.NonPublic);
             bool sceneTransition = transitionField != null && (bool)transitionField.GetValue(director);
             ScenarioV3Line pendingOutgoing = GetPrivate<ScenarioV3Line>(director, "pendingOutgoingLine");
+            FieldInfo waitingMessageCloseField = typeof(ScenarioV3Director).GetField("waitingForMessageSceneClose",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            bool waitingMessageClose = waitingMessageCloseField != null &&
+                                       (bool)waitingMessageCloseField.GetValue(director);
+            Queue<ScenarioV3Scene> queuedScenes = GetPrivate<Queue<ScenarioV3Scene>>(director, "sceneQueue");
+            ScenarioV3FinalRuntimeFix runtimeFix = UnityEngine.Object.FindAnyObjectByType<ScenarioV3FinalRuntimeFix>();
+            GameObject choiceOverlay = GetPrivate<GameObject>(runtimeFix, "choiceOverlay");
+            ScenarioV3Line choiceOverlayLine = GetPrivate<ScenarioV3Line>(runtimeFix, "choiceOverlayLine");
+            bool choiceOverlayBusy = runtimeFix != null && GetPrivateValue<bool>(runtimeFix, "choiceOverlayBusy");
             TMP_Text narrationBody = GetPrivate<TMP_Text>(flow, "narrationBodyText");
             CanvasGroup fade = GetPrivate<CanvasGroup>(flow, "fadeGroup");
             Debug.Log($"[SCENARIO V4 {route}] day={flow.CurrentDay} hour={flow.CurrentHour} " +
                       $"scene={director.ActiveSceneId}/{director.ActiveLineId} choices={director.CurrentChoices.Count} " +
                       $"location={flow.CurrentLocation} school={flow.IsSchoolDone} study={flow.IsHomeworkDone} " +
-                      $"job={flow.IsJobDone} project={director.GetState("project.progress")} " +
+                      $"job={flow.IsJobDone} project={director.GetState("schedule.project")} " +
                       $"app={apps.CurrentAppType} pendingMap={pendingMapTarget} quiz={quizOpen} " +
                       $"sceneTransition={sceneTransition} pendingOutgoing={pendingOutgoing?.id} " +
+                      $"waitingMessageClose={waitingMessageClose} queued={queuedScenes?.Count ?? 0} " +
+                      $"choiceOverlay={choiceOverlay?.activeInHierarchy}/{choiceOverlayLine?.id}/{choiceOverlayBusy} " +
+                      $"eveningFilled={director.GetState("evening_filled")} bedtimeCued={director.GetState("bedtime_cued")} " +
                       $"narration='{narrationBody?.text}' fade={fade?.alpha:0.00}/{fade?.blocksRaycasts}");
             nextDebugAt = EditorApplication.timeSinceStartup + 5d;
         }
@@ -228,13 +280,26 @@ public static class ScenarioV4FullPlayQa
             Capture($"ending-{route.ToString().ToLowerInvariant()}.png");
             Expect(flow.CurrentDay == 5, $"Ending occurred on day {flow.CurrentDay}, not day 5.");
             Expect(replyBubbleVerified, "No outgoing reply bubble was observed during the run.");
-            Expect(director.ChoiceHistory.Select(choice => choice.choiceId).Distinct().Count() ==
-                   director.ChoiceHistory.Count,
-                "A scenario choice was submitted more than once.");
+            string duplicateChoices = string.Join(", ", director.ChoiceHistory
+                .GroupBy(choice => choice.choiceId + "|" + choice.day + "|" + choice.time)
+                .Where(group => group.Count() > 1)
+                .Select(group => group.Key + " [" + string.Join(" / ", group.Select(record =>
+                    record.sceneId + ":" + record.lineId)) + "]"));
+            Expect(string.IsNullOrEmpty(duplicateChoices),
+                "A scenario choice was submitted more than once: " + duplicateChoices);
             if (route != Route.ProjectFail)
             {
-                Expect(int.Parse(director.GetState("project.progress")) >= 4,
-                    $"Group project progress only reached {director.GetState("project.progress")}.");
+                Expect(string.Equals(director.GetState("schedule.project"), "complete",
+                        StringComparison.OrdinalIgnoreCase),
+                    $"Group project ended as {director.GetState("schedule.project")} instead of complete.");
+            }
+            else
+            {
+                Expect(int.Parse(director.GetState("counter.homework_failures")) >= 1,
+                    "Project-failure route did not record the missed day-4 study task.");
+                Expect(!string.Equals(director.GetState("schedule.project"), "complete",
+                        StringComparison.OrdinalIgnoreCase),
+                    "Project-failure route incorrectly marked the group project complete.");
             }
             if (route == Route.Recovery)
             {
@@ -261,6 +326,20 @@ public static class ScenarioV4FullPlayQa
                 Expect(director.GetState("flag.help_requested") != "true", "No-help route unexpectedly requested counseling.");
                 Expect(int.Parse(director.GetState("counter.gamble_sessions")) >= 3,
                     "No-help route did not reach the high-risk branch.");
+            }
+            else if (route == Route.MinjaeDebt)
+            {
+                Expect(director.GetState("borrowed.minjae") == "true", "Minjae-debt route never borrowed from Minjae.");
+            }
+            else if (route == Route.SeojunDebt || route == Route.LoanHeld)
+            {
+                Expect(director.GetState("borrowed.seojun") == "true", $"{route} route never borrowed from Seojun.");
+                if (route == Route.LoanHeld)
+                    Expect(flow.CurrentDebt > 0, "LoanHeld route unexpectedly repaid every debt.");
+            }
+            else if (route == Route.RepeatLoss)
+            {
+                Expect(repeatLossObserved, "Repeat-loss route never displayed gamble_repeat_loss.");
             }
             routeCompleted = true;
             EditorApplication.ExitPlaymode();
@@ -322,6 +401,7 @@ public static class ScenarioV4FullPlayQa
         GameObject transientNovel = GetPrivate<GameObject>(director, "novelPanel");
         if (transientNovel != null && transientNovel.activeInHierarchy)
         {
+            Capture($"transient-novel-{flow.CurrentDay:00}-{flow.CurrentHour:00}.png");
             GetPrivate<Button>(director, "continueButton")?.onClick.Invoke();
             nextActionAt = EditorApplication.timeSinceStartup + SceneSettleDelay;
             return;
@@ -336,8 +416,38 @@ public static class ScenarioV4FullPlayQa
         if (director.HasPendingMessageAction)
         {
             if (apps.CurrentAppType != AppType.Message)
+            {
                 OpenAppImmediate(apps, AppType.Message);
+            }
+            else
+            {
+                Button borrowSend = FindButtonWithText("돈을 빌려 달라고 메시지 보낸다");
+                if (borrowSend != null)
+                {
+                    borrowSend.onClick.Invoke();
+                    nextActionAt = EditorApplication.timeSinceStartup + ChoiceSettleDelay;
+                    return;
+                }
+            }
             nextActionAt = EditorApplication.timeSinceStartup + SceneSettleDelay;
+            return;
+        }
+
+        Button deferRepayment = FindButtonWithText("지금은 미룬다");
+        if (deferRepayment != null)
+        {
+            deferRepayment.onClick.Invoke();
+            nextActionAt = EditorApplication.timeSinceStartup + ChoiceSettleDelay;
+            return;
+        }
+
+        // The real home launcher asks for one final confirmation before entering
+        // the fixed-result gambling sequence. Confirm it just as a player would.
+        Button gambleConfirmation = FindButtonWithText("한다");
+        if (gambleConfirmation != null)
+        {
+            gambleConfirmation.onClick.Invoke();
+            nextActionAt = EditorApplication.timeSinceStartup + ChoiceSettleDelay;
             return;
         }
 
@@ -353,6 +463,8 @@ public static class ScenarioV4FullPlayQa
             }
             if (capturedOfferDays.Add(flow.CurrentDay))
                 Capture($"gambling-icon-day-{flow.CurrentDay:00}.png");
+            // Exercise the same unified launcher path that players use. Calling the
+            // director directly skips schedule and late-night guards owned by the UI.
             launcher.onClick.Invoke();
             nextActionAt = EditorApplication.timeSinceStartup + SceneSettleDelay;
             return;
@@ -370,8 +482,8 @@ public static class ScenarioV4FullPlayQa
         {
             if (!flow.IsJobDone)
             {
-                bool skipShift = (route == Route.NoHelp && (flow.CurrentDay == 5 || flow.CurrentDay == 11)) ||
-                                 (route == Route.NoFunds && flow.CurrentDay == 4);
+                bool skipShift = (route == Route.NoHelp && (flow.CurrentDay == 2 || flow.CurrentDay == 3)) ||
+                                 (route == Route.NoFunds && flow.CurrentDay == 2);
                 if (skipShift)
                     flow.V3SetClock("14:00");
                 BeginMapAction(apps, "카페");
@@ -387,7 +499,7 @@ public static class ScenarioV4FullPlayQa
             }
             if (flow.V3HasStudyToday && !flow.IsHomeworkDone)
             {
-                bool skipProjectWork = route == Route.ProjectFail && flow.CurrentDay == 6;
+                bool skipProjectWork = route == Route.ProjectFail && flow.CurrentDay == 4;
                 if (skipProjectWork)
                 {
                     if (flow.CurrentHour < 21)
@@ -451,10 +563,39 @@ public static class ScenarioV4FullPlayQa
             return;
         }
 
+        ScenarioV3Line pendingOutgoing = GetPrivate<ScenarioV3Line>(director, "pendingOutgoingLine");
+        if (pendingOutgoing != null)
+        {
+            if (apps.CurrentAppType != AppType.Message)
+            {
+                OpenAppImmediate(apps, AppType.Message);
+            }
+            else
+            {
+                DialogueManager pendingDialogue = GetPrivate<DialogueManager>(director, "dialogue");
+                FieldInfo speakerField = typeof(ScenarioV3Director).GetField("pendingOutgoingSpeaker",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                if (pendingDialogue != null && speakerField != null)
+                    pendingDialogue.DismissEventChoices((SpeakerType)speakerField.GetValue(director));
+                director.ConfirmPendingOutgoingMessage(pendingOutgoing.id);
+                replyBubbleVerified = true;
+            }
+            nextActionAt = EditorApplication.timeSinceStartup + SceneSettleDelay;
+            return;
+        }
+
         IReadOnlyList<ScenarioV3Choice> choices = director.CurrentChoices;
         if (choices.Count > 0)
         {
-            ScenarioV3Choice selected = SelectChoice(choices);
+            bool currentChoiceAlreadySubmitted = director.ChoiceHistory.Any(record =>
+                record.sceneId == director.ActiveSceneId && record.lineId == director.ActiveLineId);
+            if (currentChoiceAlreadySubmitted && apps.CurrentAppType == AppType.Message)
+            {
+                apps.CloseCurrentApp();
+                nextActionAt = EditorApplication.timeSinceStartup + SceneSettleDelay;
+                return;
+            }
+            ScenarioV3Choice selected = SelectChoice(director, choices);
             Button visible = FindButtonWithText(selected.text);
             DialogueManager activeDialogue = GetPrivate<DialogueManager>(director, "dialogue");
             if (visible == null && apps.CurrentAppType == AppType.Message && !capturedChoiceDebug &&
@@ -542,7 +683,8 @@ public static class ScenarioV4FullPlayQa
         }
     }
 
-    private static ScenarioV3Choice SelectChoice(IReadOnlyList<ScenarioV3Choice> choices)
+    private static ScenarioV3Choice SelectChoice(ScenarioV3Director director,
+        IReadOnlyList<ScenarioV3Choice> choices)
     {
         string[] recoveryChoices =
         {
@@ -570,15 +712,19 @@ public static class ScenarioV4FullPlayQa
         };
         string[] seojunDebtChoices =
         {
-            "g3_chase", "g4_continue", "g5_borrow", "borrow_friend", "d13_tell_teacher"
+            "g3_chase", "g4_continue", "g5_borrow", "borrow_friend", "borrow_morning_seojun",
+            "d13_tell_teacher"
         };
         string[] loanHeldChoices =
         {
-            "g3_chase", "g4_continue", "g5_borrow", "borrow_friend", "d13_tell_teacher"
+            "g3_chase", "g4_continue", "g5_borrow", "borrow_friend", "borrow_morning_seojun",
+            "d13_tell_teacher"
         };
         string[] repeatLossChoices =
         {
-            "g3_chase", "g4_continue", "g5_borrow", "borrow_mom", "d13_tell_teacher"
+            "g3_chase", "g4_continue", "g5_borrow", "borrow_mom", "borrow_morning_mom",
+            "borrow_friend", "borrow_morning_seojun", "borrow_minjae", "borrow_morning_minjae",
+            "d13_tell_teacher"
         };
         string[] projectFailChoices =
         {
@@ -615,16 +761,33 @@ public static class ScenarioV4FullPlayQa
                                 : route == Route.ProjectFail ? projectFailChoices : recoveryChoices;
         foreach (string id in preferred)
         {
-            ScenarioV3Choice match = choices.FirstOrDefault(choice => choice.id == id);
+            ScenarioV3Choice match = choices.FirstOrDefault(choice =>
+                choice.id == id && IsBorrowChoiceAvailable(director, choice.id));
             if (match != null)
                 return match;
         }
-        return choices[0];
+        return choices.First(choice => IsBorrowChoiceAvailable(director, choice.id));
+    }
+
+    private static bool IsBorrowChoiceAvailable(ScenarioV3Director director, string choiceId)
+    {
+        if (choiceId is "borrow_mom" or "borrow_morning_mom")
+            return director.GetState("borrowed.mom") != "true";
+        if (choiceId is "borrow_friend" or "borrow_morning_seojun")
+            return director.GetState("borrowed.seojun") != "true";
+        if (choiceId is "borrow_minjae" or "borrow_morning_minjae" or "minjae_loan_accept")
+            return director.GetState("borrowed.minjae") != "true";
+        return true;
     }
 
     private static bool ShouldStartGamble(ScenarioV3Director director, int day)
     {
-        if (!director.IsGamblingAppUnlocked)
+        if (string.Equals(director.GetState("pending.borrow_menu"), "true", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(director.GetState("flag.borrow_deferred"), "true", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (!director.IsGamblingAppUnlocked || GameFlowManager.Instance == null ||
+            !GameFlowManager.Instance.IsDailyScheduleComplete)
             return false;
 
         int sessions = int.TryParse(director.GetState("counter.gamble_sessions"), out int parsed) ? parsed : 0;
@@ -632,15 +795,17 @@ public static class ScenarioV4FullPlayQa
         {
             Route.Recovery or Route.MinjaeDebt or Route.SeojunDebt => day >= 3 ? 6 : day == 2 ? 2 : 1,
             Route.LoanHeld => day >= 3 ? 5 : day == 2 ? 2 : 1,
-            Route.RepeatLoss => day >= 5 ? 7 : day >= 3 ? 6 : day == 2 ? 2 : 1,
+            // Start the binge after day one's required school and study tasks. This reaches the
+            // fixed late-round outcomes through normal launcher clicks within the five-day story.
+            Route.RepeatLoss => 9,
             Route.ProjectFail => day >= 3 ? 3 : day == 2 ? 2 : 1,
             Route.Prevention => day >= 2 ? 2 : 1,
             Route.NoGamble => 0,
             Route.NoHelp => day >= 3 ? 3 : day == 2 ? 2 : 1,
             Route.NoFunds => day >= 3 ? 6 : day == 2 ? 2 : 1,
-            Route.MixedA => day >= 10 ? 3 : day >= 6 ? 2 : day >= 2 ? 1 : 0,
-            Route.MixedB => day >= 9 ? 3 : day >= 5 ? 2 : day >= 3 ? 1 : 0,
-            Route.MixedC => day >= 9 ? 5 : day >= 6 ? 4 : day >= 5 ? 3 : day >= 2 ? 2 : 1,
+            Route.MixedA => day >= 4 ? 3 : day >= 2 ? 1 : 0,
+            Route.MixedB => day >= 4 ? 3 : day >= 3 ? 2 : 0,
+            Route.MixedC => day >= 4 ? 5 : day >= 3 ? 4 : day >= 2 ? 2 : 1,
             _ => 0
         };
 
@@ -711,6 +876,8 @@ public static class ScenarioV4FullPlayQa
     {
         text = (text ?? string.Empty).Replace('\n', ' ').Replace('\r', ' ');
         return text == "1336" ||
+               text.Contains("조사할 시간과 순서를 정한다") ||
+               text.Contains("손실을 만회하려 돈을 빌렸다") ||
                text.Contains("일정에 적어 둔다") ||
                text.Contains("친구에게 돈을 빌렸다") ||
                text.Contains("레벨·출석 보상") ||
@@ -760,6 +927,13 @@ public static class ScenarioV4FullPlayQa
     {
         return target?.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)
             ?.GetValue(target) as T;
+    }
+
+    private static T GetPrivateValue<T>(object target, string fieldName) where T : struct
+    {
+        object value = target?.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)
+            ?.GetValue(target);
+        return value is T typed ? typed : default;
     }
 
     private static void InvokePrivate(object target, string methodName)

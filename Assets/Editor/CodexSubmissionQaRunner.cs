@@ -32,10 +32,14 @@ public static class CodexSubmissionQaRunner
             return;
         }
 
-        EditorApplication.update -= TryRun;
         string mode = File.ReadAllText(marker).Trim();
         File.Delete(marker);
-        if (string.Equals(mode, "no-help", System.StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(mode, "wake", System.StringComparison.OrdinalIgnoreCase))
+        {
+            Debug.Log("[CODEX SUBMISSION QA] Waking the queued route.");
+            ScenarioV4FullPlayQa.ResumeQueuedRoute();
+        }
+        else if (string.Equals(mode, "no-help", System.StringComparison.OrdinalIgnoreCase))
         {
             Debug.Log("[CODEX SUBMISSION QA] Starting no-help route.");
             ScenarioV4FullPlayQa.RunNoHelp();
@@ -59,6 +63,16 @@ public static class CodexSubmissionQaRunner
         {
             Debug.Log("[CODEX SUBMISSION QA] Starting no-funds route.");
             ScenarioV4FullPlayQa.RunNoFunds();
+        }
+        else if (string.Equals(mode, "repeat-loss", System.StringComparison.OrdinalIgnoreCase))
+        {
+            Debug.Log("[CODEX SUBMISSION QA] Starting repeat-loss route.");
+            ScenarioV4FullPlayQa.RunRepeatLoss();
+        }
+        else if (string.Equals(mode, "visual", System.StringComparison.OrdinalIgnoreCase))
+        {
+            Debug.Log("[CODEX SUBMISSION QA] Starting 16:9 and 16:10 visual smoke QA.");
+            ScenarioV4VisualSmokeQa.Run();
         }
         else if (string.Equals(mode, "final-remaining", System.StringComparison.OrdinalIgnoreCase))
         {

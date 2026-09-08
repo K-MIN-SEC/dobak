@@ -526,7 +526,7 @@ public class QuizManager : MonoBehaviour
         {
             correctAnswerCount++;
             if (GameFlowManager.Instance == null ||
-                !GameFlowManager.Instance.V3ShowDialogue("나", item.correctText, AdvanceAfterCorrect))
+                !GameFlowManager.Instance.V3ShowDialogue("나", FormatStudyMonologue(item.correctText), AdvanceAfterCorrect))
                 Invoke(nameof(AdvanceAfterCorrect), Mathf.Max(1.8f, nextQuestionDelay));
         }
         else
@@ -535,9 +535,17 @@ public class QuizManager : MonoBehaviour
                 ? "아, 이 번호는 아닌 것 같은데... 다시 찾아보자."
                 : item.wrongText;
             if (GameFlowManager.Instance == null ||
-                !GameFlowManager.Instance.V3ShowDialogue("나", reaction, RetryCurrentQuestion))
+                !GameFlowManager.Instance.V3ShowDialogue("나", FormatStudyMonologue(reaction), RetryCurrentQuestion))
                 Invoke(nameof(RetryCurrentQuestion), 1.8f);
         }
+    }
+
+    private static string FormatStudyMonologue(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return text;
+        string trimmed = text.Trim();
+        return trimmed.StartsWith("(") && trimmed.EndsWith(")") ? trimmed : $"({trimmed})";
     }
 
     private void RetryCurrentQuestion()

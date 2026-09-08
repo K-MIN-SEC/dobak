@@ -48,7 +48,6 @@ public static class ScenarioV4VisualSmokeQa
             EditorSettings.enterPlayModeOptionsEnabled = previousOptionsEnabled;
             EditorSettings.enterPlayModeOptions = previousOptions;
             Debug.Log(failed ? "[SCENARIO V4 VISUAL QA] FAIL" : "[SCENARIO V4 VISUAL QA] PASS");
-            EditorApplication.Exit(failed ? 2 : 0);
         }
     }
 
@@ -78,58 +77,48 @@ public static class ScenarioV4VisualSmokeQa
                 if (director == null || !director.IsReady)
                     return;
                 Capture("01-day1-first-dialogue.png");
-                ClickNovelContinue(director);
-                phase++;
+                ShowTabletHomeForVisualCheck(director);
+                phase = 3;
                 nextActionAt = EditorApplication.timeSinceStartup + 0.8d;
-                break;
-            }
-            case 2:
-            {
-                ScenarioV3Director director = Object.FindAnyObjectByType<ScenarioV3Director>();
-                if (director != null && !string.IsNullOrEmpty(director.ActiveSceneId))
-                {
-                    ClickNovelContinue(director);
-                    nextActionAt = EditorApplication.timeSinceStartup + 0.45d;
-                    return;
-                }
-                phase++;
-                nextActionAt = EditorApplication.timeSinceStartup + 0.5d;
                 break;
             }
             case 3:
             {
-                ScenarioV3Director director = Object.FindAnyObjectByType<ScenarioV3Director>();
-                if (director != null && !string.IsNullOrEmpty(director.ActiveSceneId))
-                    return;
                 Capture("02-tablet-home.png");
                 GameFlowManager flow = Object.FindAnyObjectByType<GameFlowManager>();
                 flow?.V3AddCash(20000, "카페 아르바이트 급여");
                 flow?.V3AddCash(-4800, "편의점 결제");
-                Object.FindAnyObjectByType<AppWindow>()?.OpenBank();
+                ActivateAppForVisualCheck(AppType.Bank);
                 phase++;
                 nextActionAt = EditorApplication.timeSinceStartup + 0.8d;
                 break;
             }
             case 4:
                 Capture("03-bank.png");
-                Object.FindAnyObjectByType<AppWindow>()?.OpenMap();
+                ActivateAppForVisualCheck(AppType.Map);
                 phase++;
                 nextActionAt = EditorApplication.timeSinceStartup + 0.8d;
                 break;
             case 5:
                 Capture("04-map.png");
-                Object.FindAnyObjectByType<AppWindow>()?.OpenMessage();
+                ActivateAppForVisualCheck(AppType.Message);
                 phase++;
                 nextActionAt = EditorApplication.timeSinceStartup + 0.8d;
                 break;
             case 6:
                 Capture("05-message.png");
-                Object.FindAnyObjectByType<AppWindow>()?.OpenSleep();
+                ActivateAppForVisualCheck(AppType.Study);
                 phase++;
                 nextActionAt = EditorApplication.timeSinceStartup + 0.8d;
                 break;
             case 7:
-                Capture("06-sleep.png");
+                Capture("06-study.png");
+                ActivateAppForVisualCheck(AppType.Sleep);
+                phase++;
+                nextActionAt = EditorApplication.timeSinceStartup + 0.8d;
+                break;
+            case 8:
+                Capture("07-sleep.png");
                 EditorApplication.ExitPlaymode();
                 break;
         }
@@ -162,7 +151,42 @@ public static class ScenarioV4VisualSmokeQa
         button.onClick.Invoke();
     }
 
+    private static void ShowTabletHomeForVisualCheck(ScenarioV3Director director)
+    {
+        MethodInfo hideNovel = director?.GetType().GetMethod("HideNovel", BindingFlags.Instance | BindingFlags.NonPublic);
+        if (hideNovel == null)
+        {
+            Debug.LogError("[SCENARIO V4 VISUAL QA] Novel hide method missing.");
+            failed = true;
+            return;
+        }
+
+        hideNovel.Invoke(director, null);
+        Object.FindAnyObjectByType<AppWindow>()?.CloseCurrentApp();
+    }
+
+    private static void ActivateAppForVisualCheck(AppType type)
+    {
+        AppWindow apps = Object.FindAnyObjectByType<AppWindow>();
+        MethodInfo activate = apps?.GetType().GetMethod("ActivateApp", BindingFlags.Instance | BindingFlags.NonPublic);
+        if (activate == null)
+        {
+            Debug.LogError($"[SCENARIO V4 VISUAL QA] App activation method missing: {type}");
+            failed = true;
+            return;
+        }
+
+        activate.Invoke(apps, new object[] { type });
+    }
+
     private static void Capture(string filename)
+    {
+        string stem = Path.GetFileNameWithoutExtension(filename);
+        Capture(stem + "-16x9.png", 1920, 1080);
+        Capture(stem + "-16x10.png", 1920, 1200);
+    }
+
+    private static void Capture(string filename, int width, int height)
     {
         string directory = Path.GetFullPath(Path.Combine(Application.dataPath, "../Logs/ScenarioV4VisualQa"));
         Directory.CreateDirectory(directory);
@@ -177,8 +201,6 @@ public static class ScenarioV4VisualSmokeQa
             return;
         }
 
-        const int width = 1920;
-        const int height = 1080;
         RenderMode previousMode = canvas.renderMode;
         Camera previousCamera = canvas.worldCamera;
         RenderTexture previousTarget = camera.targetTexture;

@@ -487,30 +487,12 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         if (scenes == null)
             return;
 
-        string[] returnMom =
-        {
-            "왔어? 손 씻고 밥부터 먹자.",
-            "왔니? 저녁 아직 안 먹었지? 가방 두고 와.",
-            "다녀왔어? 국 식기 전에 밥부터 먹어.",
-            "오늘은 좀 늦었네. 옷 갈아입고 밥 먹자.",
-            "왔어? 배고프지? 손 씻고 와.",
-            "다녀왔니? 밥 데워놨어. 먼저 먹자."
-        };
-        string[] returnPlayer =
-        {
-            "응. 금방 갈게.",
-            "응. 가방만 두고 갈게.",
-            "알겠어. 옷만 갈아입고 갈게.",
-            "응. 손 씻고 갈게.",
-            "조금 배고파. 바로 갈게.",
-            "응. 금방 내려갈게."
-        };
         string[] homeMom =
         {
             "저녁 먹을 거야? 밥 차려놨어. 식기 전에 먹어.",
             "밥은 먹어야지. 식탁에 차려놨어.",
             "저녁 준비됐어. 조금이라도 먹고 쉬어.",
-            "계속 방에만 있지 말고 밥은 먹어."
+            "손 씻고 와. 같이 저녁 먹자."
         };
         string[] homePlayer =
         {
@@ -541,15 +523,20 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             {
                 line.enterEffects = RemoveEffect(line.enterEffects, "clock:set=18:00");
                 line.enterEffects = RemoveEffect(line.enterEffects, "clock:set=21:00");
+                // Dinner replies are inserted below; the original closing thoughts remain internal.
+                if (!originalLines.Any(candidate =>
+                        candidate.speaker != "Protagonist" && candidate.speaker != "Narrator" &&
+                        candidate.speaker != "System") &&
+                    string.Equals(line.speaker, "Protagonist", StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(line.delivery, "dialogue", StringComparison.OrdinalIgnoreCase))
+                    line.delivery = "narration";
                 line.sequence += 3;
             }
 
-            bool stayedHome = scene.id.IndexOf("missed", StringComparison.OrdinalIgnoreCase) >= 0;
-            int variant = stayedHome
-                ? StableVariantIndex(scene.day + "|" + scene.id, homeMom.Length)
-                : StableVariantIndex(scene.day + "|" + scene.id, returnMom.Length);
-            string momText = stayedHome ? homeMom[variant] : returnMom[variant];
-            string playerText = stayedHome ? homePlayer[variant] : returnPlayer[variant];
+            // evening_fill runs after arriving home, sometimes after studying there for hours.
+            int variant = StableVariantIndex(scene.day + "|" + scene.id, homeMom.Length);
+            string momText = homeMom[variant];
+            string playerText = homePlayer[variant];
 
             scene.lines.Clear();
             scene.lines.Add(CreateLine(
@@ -1305,6 +1292,10 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
 
         string outgoingContact = GetField<string>(director, "pendingOutgoingContact") ?? string.Empty;
         string pendingBorrowTarget = GetDirectorState("pending.borrow_target");
+        bool pendingBorrowMenu = string.Equals(GetDirectorState("pending.borrow_menu"), "true",
+            StringComparison.OrdinalIgnoreCase);
+        bool deferredBorrow = string.Equals(GetDirectorState("flag.borrow_deferred"), "true",
+            StringComparison.OrdinalIgnoreCase);
         bool preparedBorrow = !string.IsNullOrWhiteSpace(pendingBorrowTarget) &&
                               !string.Equals(pendingBorrowTarget, "none", StringComparison.OrdinalIgnoreCase) &&
                               !string.Equals(pendingBorrowTarget, "false", StringComparison.OrdinalIgnoreCase) &&
@@ -1315,6 +1306,13 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         // A reply the player already committed to, a borrow request being composed, or an active
         // message decision is a real unresolved action. Plain unread messages are not a hard lock:
         // the player may choose to ignore a temptation and protect (or sacrifice) the schedule.
+        if (pendingBorrowMenu || deferredBorrow)
+        {
+            flow.V3ShowDialogue("나", "(돈을 부탁할 사람은 아침에 정하기로 했다. 오늘은 그만 자자.)",
+                () => flow.V3MarkAppAttention(AppType.Sleep));
+            return;
+        }
+
         if (!string.IsNullOrWhiteSpace(outgoingContact) || preparedBorrow || waitingChoice || waitingClose)
         {
             string prompt;
@@ -2063,7 +2061,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             return;
 
         lateMapCueShownDay = flow.CurrentDay;
-        flow.V3ShowDialogue("나", "(벌써 늦었지만, 지금이라도 학교에 가는 편이 낫겠다.)", null);
+        flow.V3ShowDialogue("나", "(지각이다. 서둘러서 학교로 출발하자.)", null);
     }
 
 
@@ -2848,9 +2846,16 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             while (log.Count > oldLogCount)
                 log.RemoveAt(log.Count - 1);
             preservedDialogueLog = new List<string>(log);
-            choiceOverlayLine = null;
-            choiceOverlayMessageSpeaker = SpeakerType.Unknown;
-            choiceOverlayBusy = false;
+
+            // HandleChoice may synchronously open the next queued tablet choice. In that case
+            // ShowChoiceOverlay has already installed a new line and click listeners, so the
+            // previous choice's cleanup must not erase the newly opened overlay state.
+            if (ReferenceEquals(choiceOverlayLine, line))
+            {
+                choiceOverlayLine = null;
+                choiceOverlayMessageSpeaker = SpeakerType.Unknown;
+                choiceOverlayBusy = false;
+            }
         }
     }
 

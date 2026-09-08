@@ -634,10 +634,11 @@ public sealed class GameFlowManager : MonoBehaviour
         if (gameEnded)
             return false;
 
-        // 초반에는 공부 앱으로 바로 빠져 버리지 않도록 엄마와 민재의 첫 메시지를 실제로 확인한 뒤 해금한다.
+        // 초반에는 공부 앱으로 바로 빠져 버리지 않도록 첫 메시지들을 실제로 확인한 뒤 해금한다.
+        // 아직 소개되지 않은 인물의 이름을 안내문에서 먼저 노출하지 않는다.
         if (scenarioV3 != null && !scenarioV3.HasCompletedInitialMessageIntro)
         {
-            ShowFeedback("엄마와 민재의 메시지를 먼저 확인하자.");
+            ShowFeedback("먼저 도착한 메시지를 확인하자.");
             V3MarkAppAttention(AppType.Message);
             return false;
         }

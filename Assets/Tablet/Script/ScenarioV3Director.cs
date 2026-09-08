@@ -266,10 +266,13 @@ public sealed class ScenarioV3Director : MonoBehaviour
 
         if (app == null)
         {
-            // 단독 수신 메시지를 읽고 채팅 앱을 닫은 뒤에도 취침 유도가 멈추지 않게 한다.
-            // 조건은 TryQueueBedtimeCue가 다시 엄격하게 확인한다.
+            // 메시지를 읽고 닫는 동안 다른 일정이 끝났을 수도 있다. 저녁 장면을
+            // 먼저 확인해야 도박하지 않은 경로도 18시에서 멈추지 않는다.
             if (GetInt("unread_count") <= 0)
-                TryQueueBedtimeCue();
+            {
+                if (!TryQueueEveningFill())
+                    TryQueueBedtimeCue();
+            }
             return;
         }
 
@@ -289,6 +292,23 @@ public sealed class ScenarioV3Director : MonoBehaviour
         {
             flow.V3HideTutorialHint(AppType.Study);
         }
+    }
+
+    private void Update()
+    {
+        if (!IsReady || flow == null || flow.IsGameEnded || flow.IsSleepHour ||
+            flow.CurrentLocation != "집" || activeScene != null || sceneQueue.Count > 0 ||
+            waitingForMessageChoice || waitingForMessageSceneClose || HasPendingMessageAction)
+            return;
+
+        // A message/app close can re-enter the scene completion callback. In that narrow
+        // case the evening flag may be committed although its scene never remains active.
+        // Recover only that impossible idle state; completed evenings are already at 21:00.
+        if (GetState("evening_filled") != "1" || !IsDailyScheduleResolvedForEvening())
+            return;
+
+        SetState("evening_filled", "0");
+        TryQueueEveningFill();
     }
 
     public void NotifyConversationOpened(SpeakerType speaker)

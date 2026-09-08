@@ -98,6 +98,8 @@ public class AppWindow : MonoBehaviour
         // Dictionary 등록
         foreach (AppData app in apps)
         {
+            StretchAppWidth(app.appUI);
+
             // 같은 AppType이 두 번 등록되는 것을 방지
             if (!appDictionary.ContainsKey(app.appType))
             {
@@ -107,6 +109,27 @@ public class AppWindow : MonoBehaviour
             // 시작 시 모든 앱 끄기
             app.appUI.SetActive(false);
         }
+    }
+
+    private static void StretchAppWidth(GameObject appUI)
+    {
+        RectTransform rect = appUI != null ? appUI.GetComponent<RectTransform>() : null;
+        if (rect == null)
+            return;
+
+        Vector2 anchorMin = rect.anchorMin;
+        Vector2 anchorMax = rect.anchorMax;
+        anchorMin.x = 0f;
+        anchorMax.x = 1f;
+        rect.anchorMin = anchorMin;
+        rect.anchorMax = anchorMax;
+
+        Vector2 offsetMin = rect.offsetMin;
+        Vector2 offsetMax = rect.offsetMax;
+        offsetMin.x = 0f;
+        offsetMax.x = 0f;
+        rect.offsetMin = offsetMin;
+        rect.offsetMax = offsetMax;
     }
 
     //=========================
