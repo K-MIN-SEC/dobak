@@ -1271,7 +1271,7 @@ public class DialogueManager : MonoBehaviour
             SpeakerType.Friend => string.IsNullOrWhiteSpace(providedName) ? "동창친구" : providedName,
             SpeakerType.Mom => "엄마",
             SpeakerType.Teacher => "학교",
-            SpeakerType.CafeManager => "카페 매니저",
+            SpeakerType.CafeManager => "점장님",
             SpeakerType.Bank => "은행 알림",
             SpeakerType.Site => "사이트 알림",
             SpeakerType.Counselor => "상담 선생님",

@@ -1041,8 +1041,12 @@ public static class ScenarioV4FullPlayQa
             Expect(observedScenes.Contains(scene), $"Weekend schedule scene was not played: {scene}.");
         if (suffix == "missed")
         {
+            Expect(observedScenes.Contains("v5_d2_minjae_after_miss"),
+                "Minjae's day-2 follow-up after the missed job was not played.");
             Expect(observedScenes.Contains("v5_d2_missed_daytime"),
                 "The day-2 missed-job daytime bridge was not played.");
+            Expect(observedScenes.Contains("v5_d3_minjae_after_miss"),
+                "Minjae's day-3 follow-up after the missed job was not played.");
             Expect(observedScenes.Contains("v5_d3_missed_daytime_fired"),
                 "The consecutive-miss daytime bridge was not played.");
         }

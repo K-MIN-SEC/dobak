@@ -3328,6 +3328,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
             "seojun" => SpeakerType.Joonho,
             "담임 선생님" => SpeakerType.Teacher,
             "teacher" => SpeakerType.Teacher,
+            "점장님" => SpeakerType.CafeManager,
             "카페 매니저" => SpeakerType.CafeManager,
             "cafemanager" => SpeakerType.CafeManager,
             _ => SpeakerType.Unknown
@@ -3351,7 +3352,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
             "minjae" => "민재",
             "mom" => "엄마",
             "teacher" => "담임 선생님",
-            "cafemanager" => "카페 매니저",
+            "cafemanager" => "점장님",
             "seoyeon" => "서연",
             "seojun" => "서준",
             "bank" => "은행",
