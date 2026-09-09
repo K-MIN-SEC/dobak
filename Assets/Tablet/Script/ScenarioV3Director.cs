@@ -2303,6 +2303,14 @@ public sealed class ScenarioV3Director : MonoBehaviour
         if (key.Equals("clock", StringComparison.OrdinalIgnoreCase))
         {
             if (operation.StartsWith("set=")) flow.V3SetClock(operation.Substring(4));
+            else if (operation.StartsWith("advance_to=", StringComparison.OrdinalIgnoreCase))
+            {
+                string target = operation.Substring("advance_to=".Length).Trim();
+                string hourText = target.Split(':')[0];
+                if (int.TryParse(hourText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int targetHour) &&
+                    flow.CurrentHour < targetHour)
+                    flow.V3SetClock(target);
+            }
             else if (operation.StartsWith("add="))
             {
                 int minutes = ResolveInt(operation.Substring(4));

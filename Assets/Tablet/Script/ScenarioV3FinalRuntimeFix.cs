@@ -1284,7 +1284,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         // the appropriate school, job, or study prompt instead of a gamble choice.
         if ((flow.IsWeekend && !flow.IsJobDone) ||
             (!flow.IsWeekend && !flow.IsSchoolDone) ||
-            (!flow.IsWeekend && flow.V3HasStudyToday && !flow.IsHomeworkDone))
+            (flow.V3HasStudyToday && !flow.IsHomeworkDone))
         {
             InvokePrivate(flow, "StartScenarioGambling");
             return;
@@ -3453,8 +3453,8 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
                     visible = !flow.IsGameEnded && !transitioning && CanActuallyMoveNow();
                     break;
                 case AppType.Study:
-                    visible = !flow.IsGameEnded && !flow.IsWeekend && flow.IsSchoolDone &&
-                              flow.V3HasStudyToday && !flow.IsHomeworkDone;
+                    visible = !flow.IsGameEnded && flow.V3HasStudyToday && !flow.IsHomeworkDone &&
+                              (flow.IsWeekend ? flow.IsJobDone : flow.IsSchoolDone);
                     break;
                 default:
                     visible = false;

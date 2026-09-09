@@ -68,6 +68,11 @@ public static class ScenarioV4FullPlayQa
     private static string expectedConsecutiveGambleScene = string.Empty;
     private static string lastBlockingDialogue = string.Empty;
     private static readonly HashSet<string> observedScenes = new HashSet<string>();
+    private static bool jobGateAttempted;
+    private static bool jobGateVerified;
+    private static bool weekendStudyGateAttempted;
+    private static bool weekendStudyGateVerified;
+    private static string expectedScheduleGateText = string.Empty;
 
     private const double UiSettleDelay = 0.12d;
     private const double SceneSettleDelay = 0.7d;
@@ -155,6 +160,11 @@ public static class ScenarioV4FullPlayQa
         expectedConsecutiveGambleScene = string.Empty;
         lastBlockingDialogue = string.Empty;
         observedScenes.Clear();
+        jobGateAttempted = false;
+        jobGateVerified = false;
+        weekendStudyGateAttempted = false;
+        weekendStudyGateVerified = false;
+        expectedScheduleGateText = string.Empty;
         pendingMapTarget = string.Empty;
         lastLine = string.Empty;
         lastCapturedScene = string.Empty;
@@ -326,6 +336,8 @@ public static class ScenarioV4FullPlayQa
             else if (route == Route.NoHelp)
             {
                 ExpectWeekendScheduleScenes("missed");
+                Expect(jobGateVerified, "Weekend gambling was not verified as blocked before the job schedule.");
+                Expect(weekendStudyGateVerified, "Weekend gambling was not verified as blocked before study.");
                 Expect(director.GetState("ending") == "no_help", $"Expected no-help ending, got {director.GetState("ending")}.");
                 Expect(director.GetState("flag.help_requested") != "true", "No-help route unexpectedly requested counseling.");
                 Expect(int.Parse(director.GetState("counter.gamble_sessions")) >= 3,
@@ -350,11 +362,24 @@ public static class ScenarioV4FullPlayQa
             return;
         }
 
+        if (!string.IsNullOrEmpty(director.ActiveSceneId))
+            observedScenes.Add(director.ActiveSceneId);
+
         GameObject blockingNarration = GameObject.Find("Narration Dialogue");
         if (blockingNarration != null && blockingNarration.activeInHierarchy)
         {
             TMP_Text title = GetPrivate<TMP_Text>(flow, "narrationTitleText");
             TMP_Text body = GetPrivate<TMP_Text>(flow, "narrationBodyText");
+            if (!string.IsNullOrEmpty(expectedScheduleGateText))
+            {
+                bool matched = body != null && body.text.Contains(expectedScheduleGateText);
+                Expect(matched, $"Expected schedule gate dialogue containing '{expectedScheduleGateText}', got '{body?.text}'.");
+                if (expectedScheduleGateText == "알바부터 다녀오자")
+                    jobGateVerified = matched;
+                else if (expectedScheduleGateText == "공부부터 끝내자")
+                    weekendStudyGateVerified = matched;
+                expectedScheduleGateText = string.Empty;
+            }
             string dialogueKey = $"{title?.text}\n{body?.text}";
             if (dialogueKey != lastBlockingDialogue)
             {
@@ -487,10 +512,24 @@ public static class ScenarioV4FullPlayQa
         {
             if (!flow.IsJobDone)
             {
+                if (route == Route.NoHelp && flow.CurrentDay == 2 && !jobGateAttempted)
+                {
+                    Button launcher = FindActiveButton("Gambling Launcher");
+                    if (launcher == null)
+                    {
+                        Fail("Gambling launcher was missing while testing the weekend job gate.");
+                        return;
+                    }
+                    jobGateAttempted = true;
+                    expectedScheduleGateText = "알바부터 다녀오자";
+                    launcher.onClick.Invoke();
+                    nextActionAt = EditorApplication.timeSinceStartup + UiSettleDelay;
+                    return;
+                }
                 bool skipShift = (route == Route.NoHelp && (flow.CurrentDay == 2 || flow.CurrentDay == 3)) ||
                                  (route == Route.NoFunds && flow.CurrentDay == 2);
                 if (skipShift)
-                    flow.V3SetClock("14:00");
+                    flow.V3SetClock(route == Route.NoHelp ? "10:00" : "14:00");
                 BeginMapAction(apps, "카페");
                 return;
             }
@@ -499,6 +538,25 @@ public static class ScenarioV4FullPlayQa
                 if (flow.CurrentLocation != "집")
                 {
                     BeginMapAction(apps, "집");
+                    return;
+                }
+
+                if (route == Route.NoHelp && flow.CurrentDay == 2 && !weekendStudyGateAttempted)
+                {
+                    Dictionary<AppType, GameObject> dots = GetPrivate<Dictionary<AppType, GameObject>>(flow, "appAttentionDots");
+                    Expect(dots != null && dots.TryGetValue(AppType.Study, out GameObject studyDot) &&
+                           studyDot != null && studyDot.activeInHierarchy,
+                        "The weekend study attention dot was not visible after the missed job was resolved.");
+                    Button launcher = FindActiveButton("Gambling Launcher");
+                    if (launcher == null)
+                    {
+                        Fail("Gambling launcher was missing while testing the weekend study gate.");
+                        return;
+                    }
+                    weekendStudyGateAttempted = true;
+                    expectedScheduleGateText = "공부부터 끝내자";
+                    launcher.onClick.Invoke();
+                    nextActionAt = EditorApplication.timeSinceStartup + UiSettleDelay;
                     return;
                 }
 
@@ -981,6 +1039,13 @@ public static class ScenarioV4FullPlayQa
         };
         foreach (string scene in expected)
             Expect(observedScenes.Contains(scene), $"Weekend schedule scene was not played: {scene}.");
+        if (suffix == "missed")
+        {
+            Expect(observedScenes.Contains("v5_d2_missed_daytime"),
+                "The day-2 missed-job daytime bridge was not played.");
+            Expect(observedScenes.Contains("v5_d3_missed_daytime_fired"),
+                "The consecutive-miss daytime bridge was not played.");
+        }
     }
 
     private static void Expect(bool condition, string message)
