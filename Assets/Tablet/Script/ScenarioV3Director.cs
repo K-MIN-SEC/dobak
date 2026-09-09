@@ -150,6 +150,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
     public bool CanRewind => checkpoints.Count > 0;
     public string RewindLabel => FindRewindCheckpoint()?.label ?? string.Empty;
     public bool HasPendingMessageAction => pendingOutgoingLine != null || waitingForMessageChoice ||
+                                           waitingForIncomingMessageRead || incomingMessageCoroutine != null ||
                                            GetInt("unread_count") > 0 || HasPreparedBorrowMessage;
 
     private bool HasPreparedBorrowMessage
@@ -249,6 +250,13 @@ public sealed class ScenarioV3Director : MonoBehaviour
             flow.V3SetSchedule("job", "missed");
         }
 
+        if ((trigger == "school_complete" || trigger == "school_missed") &&
+            TryStartFinalCollapseEnding())
+        {
+            Save();
+            return;
+        }
+
         PlayTrigger(trigger);
         if (activeScene == null && sceneQueue.Count == 0)
         {
@@ -285,6 +293,11 @@ public sealed class ScenarioV3Director : MonoBehaviour
             SetState("unread_count", dialogue != null
                 ? dialogue.TotalUnreadCount.ToString(CultureInfo.InvariantCulture)
                 : "0");
+            if (waitingForIncomingMessageRead && waitingIncomingLine != null && dialogue != null)
+            {
+                dialogue.PreferConversation(waitingIncomingSpeaker);
+                dialogue.OpenDialogue(waitingIncomingSpeaker);
+            }
             Save();
         }
         else if (app == AppType.Map)
@@ -713,6 +726,11 @@ public sealed class ScenarioV3Director : MonoBehaviour
     private void CompleteSleepDay()
     {
         FinalizeCurrentDayStatus();
+        if (TryStartFinalCollapseEnding())
+        {
+            Save();
+            return;
+        }
         if (GetState("schedule.school") == "missed")
             QueueTrigger("school_missed", null);
         QueueTrigger("day_end", AdvanceToNextDay);
@@ -1220,6 +1238,11 @@ public sealed class ScenarioV3Director : MonoBehaviour
         waitingIncomingSpeaker = speaker;
         waitingIncomingLine = line;
         flow.V3MarkAppAttention(AppType.Message);
+        if (IsMessageUiReady())
+        {
+            dialogue.PreferConversation(speaker);
+            dialogue.OpenDialogue(speaker);
+        }
         Save();
     }
 
@@ -2114,6 +2137,15 @@ public sealed class ScenarioV3Director : MonoBehaviour
         QueueTrigger("day_start", null);
         QueueDeferredBorrowMorningAfterDayStart();
         StartQueuedScene();
+    }
+
+    private bool TryStartFinalCollapseEnding()
+    {
+        if (flow.CurrentDay != FinalDay || QueueTrigger("collapse_check", null) == 0)
+            return false;
+
+        StartQueuedScene();
+        return true;
     }
 
     private bool QueueDeferredBorrowMorningAfterDayStart()

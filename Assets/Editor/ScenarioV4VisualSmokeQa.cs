@@ -48,6 +48,8 @@ public static class ScenarioV4VisualSmokeQa
             EditorSettings.enterPlayModeOptionsEnabled = previousOptionsEnabled;
             EditorSettings.enterPlayModeOptions = previousOptions;
             Debug.Log(failed ? "[SCENARIO V4 VISUAL QA] FAIL" : "[SCENARIO V4 VISUAL QA] PASS");
+            if (Application.isBatchMode)
+                EditorApplication.Exit(failed ? 2 : 0);
         }
     }
 
