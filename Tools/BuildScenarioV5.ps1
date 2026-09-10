@@ -75,20 +75,30 @@ foreach ($sourceRow in $source) {
     if ($sourceRow.day -eq "1" -or $coreScenes -contains $sourceRow.scene_id) {
         $row = Convert-SourceRow $sourceRow
         switch ($row.line_id) {
-            "d1_intro_01" { $row.enter_effects = "clock:set=07:00|cash:set=50000|debt:set=0|flag.gambling_started:set=false" }
+            "d1_intro_01" {
+                $row.text = "알람 소리에 눈을 떴다. 창밖은 이미 밝아 있었다."
+                $row.enter_effects = "clock:set=07:00|cash:set=50000|debt:set=0|flag.gambling_started:set=false"
+            }
             "d1_intro_goal_01" {
-                $row.text = "며칠 전 책상에서 떨어뜨린 노트북이 아예 켜지지 않았다. 과제랑 발표에도 써야 하는데, 수리비로 15만 원이 든다고 했다."
+                $row.text = "며칠 전 책상에서 떨어뜨린 노트북이 아예 켜지지 않았다. 과제와 발표에 필요한데, 수리비가 15만 원이나 든다고 했다."
                 $row.enter_effects = "money_goal:set=150000"
             }
-            "d1_intro_goal_02" { $row.text = "내가 떨어뜨린 거라 부모님께 또 부탁하기도 애매했다. 통장에 모아 둔 돈은 5만 원." }
-            "d1_intro_goal_03" { $row.text = "이번 주말 알바를 이틀 다 나가면 10만 원을 더 모을 수 있다. 그러면 수리비 15만 원을 채울 수 있다. 괜히 다른 방법 찾지 말고 일정부터 지키자." }
-            "d1_school_01" { $row.text = "다음 주 화요일에 조별 발표할 거야. 온라인 도박 광고가 확률과 보상을 어떻게 포장하는지, 위험할 때 어디서 도움받을 수 있는지 조사해 보자." }
+            "d1_intro_goal_02" { $row.text = "내가 떨어뜨린 거라 부모님께 또 부탁하기도 애매했다." }
+            "d1_intro_goal_03" {
+                $row.sequence = "7"
+                $row.text = "이번 주말 이틀 동안 아르바이트를 하면 10만 원을 더 모을 수 있다. 그러면 수리비 15만 원을 채울 수 있다. 일단 계획대로 돈을 모아 보자."
+            }
+            "d1_intro_03" { $row.sequence = "8" }
+            "d1_school_01" { $row.text = "다음 주 화요일에 조별 발표할 거야. 온라인 도박 광고가 확률과 보상을 어떻게 과장하는지, 온라인 도박으로 문제가 생겼을 때 어디에서 도움을 받을 수 있는지 조사해 보자." }
             "d1_school_02" { $row.text = "다음 주에 바로 조별 발표라니. 누구랑 같은 조지?" }
-            "d1_school_05" { $row.text = "월요일까지 도박 피해 사례랑 도움받을 곳을 정리해 줄래? 나는 도박문제예방치유원에서 광고의 유혹 장치를 찾아볼게." }
-            "d1_school_09" { $row.text = "응. 내가 찾은 자료는 월요일 학교에서 보여줄게. 주말 잘 보내." }
-            "d1_school_10" { $row.text = "그래. 월요일에 보자." }
+            "d1_school_05" { $row.text = "월요일까지 도박 피해 사례와 도움받을 곳을 정리해 줄래?" }
+            "d1_school_06" { $row.sequence = "7" }
+            "d1_school_07" { $row.sequence = "8" }
+            "d1_school_08" { $row.sequence = "9" }
+            "d1_school_09" { $row.sequence = "10"; $row.text = "응. 내가 찾은 자료는 월요일 학교에서 보여줄게. 주말 잘 보내." }
+            "d1_school_10" { $row.sequence = "11"; $row.text = "그래. 월요일에 보자." }
             "d1_school_missed_message_01" {
-                $row.text = "오늘 학교 안 왔더라. 우리 둘이 같은 조 됐어. 다음 주 화요일에 온라인 광고랑 확률 표현으로 발표한대."
+                $row.text = "오늘 학교 안 왔더라. 우리 둘이 같은 조 됐어. 다음 주 화요일에 온라인 도박 광고가 확률과 보상을 어떻게 과장하는지 발표한대."
                 $row.enter_effects = "flag.project_introduced:set=true"
             }
             "d1_school_missed_message_02" { $row.text = "월요일까지 도박 피해 사례랑 도움받을 곳을 정리해 줄래? 나는 도박문제예방치유원에서 광고의 유혹 장치를 찾아볼게." }
@@ -117,6 +127,12 @@ foreach ($sourceRow in $source) {
             "sys_late_gamble_morning_weekend_02" { $row.condition = "flag.gambled_late=true;flag.borrow_deferred!=true;day=2|day=3" }
         }
         $rows.Add($row)
+        if ($row.line_id -eq "d1_intro_goal_02") {
+            $rows.Add((New-ScenarioRow "d1_intro" "d1_intro_goal_02a" "main" "1" "7:00" "new_game" "" 300 "game" 6 "Protagonist" "나" "dialogue" "" "통장에 모아 둔 돈은 5만 원뿐이었다."))
+        }
+        elseif ($row.line_id -eq "d1_school_05") {
+            $rows.Add((New-ScenarioRow "d1_school" "d1_school_05a" "school" "1" "school" "school_complete" "" 150 "game" 6 "Seoyeon" "서연" "dialogue" "seoyeon_default" "나는 도박문제예방치유원 자료에서 광고가 사람을 유혹하는 방법을 찾아볼게."))
+        }
     }
 }
 
@@ -139,14 +155,14 @@ $rows.Add((New-ScenarioRow "v5_d2_missed_daytime" "v5_d2_missed_daytime_01" "mai
 $rows.Add((New-ScenarioRow "v5_d2_study_cue_done" "v5_d2_study_cue_done_01" "study" "2" "16:00" "post_job_home" "schedule.job=complete;schedule.homework=pending" 196 "day" 1 "Protagonist" "나" "overlay" "" "첫 근무를 마치고 집에 오니 16시다. 오늘 번 5만 원이 통장에 들어왔지만, 아직 서연과 약속한 조별과제가 남아 있다."))
 $rows.Add((New-ScenarioRow "v5_d2_study_cue_done" "v5_d2_study_cue_done_02" "study" "2" "16:00" "post_job_home" "schedule.job=complete;schedule.homework=pending" 196 "day" 2 "Seoyeon" "서연" "message" "seoyeon_default" "알바 끝났어? 어제 맡은 상담 번호랑 어떤 도움을 받을 수 있는지 오늘 정리해 줄 수 있어?"))
 $rows.Add((New-ScenarioRow "v5_d2_study_cue_done" "v5_d2_study_cue_done_03" "study" "2" "16:00" "post_job_home" "schedule.job=complete;schedule.homework=pending" 196 "day" 3 "Protagonist" "서연" "message" "" "응, 지금 집에 왔어. 번호만 쓰지 않고 상담 내용이랑 출처까지 확인해서 보낼게."))
-$rows.Add((New-ScenarioRow "v5_d2_study_cue_done" "v5_d2_study_cue_done_04" "study" "2" "16:00" "post_job_home" "schedule.job=complete;schedule.homework=pending" 196 "day" 4 "Protagonist" "나" "overlay" "" "서연에게 답장도 했으니 공부 앱에서 자료 조사를 시작하자." -Effects "tutorial:set=study" -Purpose "알바 귀가 뒤 서연의 메시지를 확인하고 답한 다음 공부 앱으로 연결한다."))
+$rows.Add((New-ScenarioRow "v5_d2_study_cue_done" "v5_d2_study_cue_done_04" "study" "2" "16:00" "post_job_home" "schedule.job=complete;schedule.homework=pending" 196 "day" 4 "Protagonist" "나" "overlay" "" "서연에게 답장도 했으니 공부 앱에서 자료 조사를 시작하자." -Effects "flag.d2_seoyeon_study_message_seen:set=true|tutorial:set=study" -Purpose "알바 귀가 뒤 서연의 메시지를 확인하고 답한 다음 공부 앱으로 연결한다."))
 $rows.Add((New-ScenarioRow "v5_d2_study_cue_missed" "v5_d2_study_cue_missed_01" "study" "2" "afternoon" "job_missed" "schedule.job=missed;schedule.homework=pending" 170 "day" 1 "Protagonist" "나" "overlay" "" "오늘 알바는 놓쳤다. 수리비 계획은 틀어졌지만 서연과 약속한 조별과제까지 미룰 수는 없다."))
 $rows.Add((New-ScenarioRow "v5_d2_study_cue_missed" "v5_d2_study_cue_missed_02" "study" "2" "afternoon" "job_missed" "schedule.job=missed;schedule.homework=pending" 170 "day" 2 "Seoyeon" "서연" "message" "seoyeon_default" "어제 맡은 상담 번호 자료, 오늘 확인할 수 있지? 번호만 말고 어떤 도움을 받을 수 있는지도 부탁해."))
 $rows.Add((New-ScenarioRow "v5_d2_study_cue_missed" "v5_d2_study_cue_missed_03" "study" "2" "afternoon" "job_missed" "schedule.job=missed;schedule.homework=pending" 170 "day" 3 "Protagonist" "서연" "message" "" "응. 늦지 않게 상담 내용이랑 출처까지 확인해서 보낼게."))
-$rows.Add((New-ScenarioRow "v5_d2_study_cue_missed" "v5_d2_study_cue_missed_04" "study" "2" "afternoon" "job_missed" "schedule.job=missed;schedule.homework=pending" 170 "day" 4 "Protagonist" "나" "overlay" "" "적어도 약속한 자료는 끝내자. 공부 앱에서 상담 정보를 조사하자." -Effects "tutorial:set=study"))
+$rows.Add((New-ScenarioRow "v5_d2_study_cue_missed" "v5_d2_study_cue_missed_04" "study" "2" "afternoon" "job_missed" "schedule.job=missed;schedule.homework=pending" 170 "day" 4 "Protagonist" "나" "overlay" "" "적어도 약속한 자료는 끝내자. 공부 앱에서 상담 정보를 조사하자." -Effects "flag.d2_seoyeon_study_message_seen:set=true|tutorial:set=study"))
 $rows.Add((New-ScenarioRow "v5_d2_study_done" "v5_d2_study_done_01" "study" "2" "evening" "homework_complete" "" 205 "game" 1 "Protagonist" "서연" "message" "" "서연아. 도박 문제 상담은 국번 없이 1336이래. 전화로 상담받을 수 있고, 가족이나 주변 사람도 도움을 요청할 수 있대."))
 $rows.Add((New-ScenarioRow "v5_d2_study_done" "v5_d2_study_done_02" "study" "2" "evening" "homework_complete" "" 205 "game" 2 "Seoyeon" "서연" "message" "seoyeon_default" "1336 맞아. 출처까지 같이 적어줘서 첫 장 정리하기 편하겠다."))
-$rows.Add((New-ScenarioRow "v5_d2_study_done" "v5_d2_study_done_03" "study" "2" "evening" "homework_complete" "" 205 "game" 3 "Seoyeon" "서연" "message" "seoyeon_default" "내일은 내가 찾은 사례를 보내줄게. 처음에 왜 빠져들었고 어떤 순간부터 문제가 커졌는지 같이 보자."))
+$rows.Add((New-ScenarioRow "v5_d2_study_done" "v5_d2_study_done_03" "study" "2" "evening" "homework_complete" "" 205 "game" 3 "Seoyeon" "서연" "message" "seoyeon_default" "내일은 내가 찾은 사례를 보내줄게. 처음에 왜 도박에 빠져들었고 어떤 순간부터 문제가 커졌는지 같이 보자."))
 $rows.Add((New-ScenarioRow "v5_d2_study_done" "v5_d2_study_done_04" "study" "2" "evening" "homework_complete" "" 205 "game" 4 "Protagonist" "서연" "message" "" "응. 내일 알바 끝나고 사례 확인해서 내 생각도 보내줄게." -Effects "project.progress:add=1|relation.seoyeon:add=1" -Purpose "공부 결과를 주인공이 먼저 보내고 다음 과제 약속에도 답한다."))
 $rows.Add((New-ScenarioRow "v5_d2_night_done" "v5_d2_night_done_01" "sleep" "2" "21:00" "evening_fill" "schedule.job=complete;schedule.homework=complete" 90 "day" 1 "Protagonist" "나" "overlay" "" "서연에게 자료를 보내고 답장까지 마쳤다. 저녁을 먹고 내일 근무 준비를 하다 보니 21시가 됐다." -Effects "clock:set=21:00" -Purpose "서연과의 대화가 끝난 뒤에만 밤 장면으로 전환한다."))
 $rows.Add((New-ScenarioRow "v5_d2_night_missed" "v5_d2_night_missed_01" "sleep" "2" "21:00" "evening_fill" "schedule.job=missed;schedule.homework=complete" 89 "day" 1 "Protagonist" "나" "overlay" "" "서연에게 자료를 보내고 답장까지 마쳤다. 오늘 몫 5만 원은 비었지만 내일 근무 준비를 하다 보니 21시가 됐다." -Effects "clock:set=21:00" -Purpose "결근 경로도 공부와 메시지를 마친 뒤 밤으로 전환한다."))
@@ -170,16 +186,17 @@ $rows.Add((New-ScenarioRow "v5_d3_minjae_after_miss" "v5_d3_minjae_after_miss_03
 $rows.Add((New-ScenarioRow "v5_d3_minjae_after_miss" "v5_d3_minjae_after_miss_04" "gambling" "3" "afternoon" "job_missed" "schedule.job=missed" 185 "day" 4 "Protagonist" "민재" "message" "" "일단 생각해 볼게." -Effects "gamble:offer" -Purpose "도박 실행은 여전히 남은 일정 완료 뒤 플레이어가 결정한다."))
 $rows.Add((New-ScenarioRow "v5_d3_missed_daytime_first" "v5_d3_missed_daytime_first_01" "main" "3" "daytime" "job_missed" "schedule.job=missed;schedule.homework=pending;counter.job_failures=0" 176 "day" 1 "Protagonist" "나" "narration" "" "점장님께 사과하고 다음 근무는 놓치지 않도록 일정을 다시 적었다. 점심을 먹고 발표 자료를 살펴보다 보니 16시가 됐다." -Effects "clock:advance_to=16:00" -Purpose "첫 결근 뒤 남은 낮 시간을 낮 배경 장면으로 연결한다."))
 $rows.Add((New-ScenarioRow "v5_d3_missed_daytime_fired" "v5_d3_missed_daytime_fired_01" "main" "3" "daytime" "job_missed" "schedule.job=missed;schedule.homework=pending;counter.job_failures>=1" 176 "day" 1 "Protagonist" "나" "narration" "" "다음 근무를 잡기 어렵다는 메시지를 몇 번이나 다시 읽었다. 사라진 알바비와 수리비 계획을 다시 계산하다 보니 어느새 16시였다." -Effects "clock:advance_to=16:00" -Purpose "연속 결근 결과와 줄어든 수입을 낮 배경 장면에서 체감시킨다."))
-$rows.Add((New-ScenarioRow "v5_d3_case_cue_done" "v5_d3_case_cue_done_01" "study" "3" "16:00" "post_job_home" "schedule.job=complete;schedule.homework=pending" 198 "day" 1 "Seoyeon" "서연" "message" "seoyeon_default" "알바 끝났지? 어제 말한 사례 보내둘게. 우리 또래가 무료 포인트로 시작한 이야기야."))
-$rows.Add((New-ScenarioRow "v5_d3_case_cue_done" "v5_d3_case_cue_done_02" "study" "3" "16:00" "post_job_home" "schedule.job=complete;schedule.homework=pending" 198 "day" 2 "Protagonist" "서연" "message" "" "응, 지금 집이야. 처음에는 어떻게 빠져들었대?"))
-$rows.Add((New-ScenarioRow "v5_d3_case_cue_done" "v5_d3_case_cue_done_03" "study" "3" "16:00" "post_job_home" "schedule.job=complete;schedule.homework=pending" 198 "day" 3 "Seoyeon" "서연" "message" "seoyeon_default" "처음엔 무료 포인트로 조금 땄대. 그러니까 다음에도 쉽게 딸 수 있을 것 같았겠지."))
-$rows.Add((New-ScenarioRow "v5_d3_case_cue_done" "v5_d3_case_cue_done_04" "study" "3" "16:00" "post_job_home" "schedule.job=complete;schedule.homework=pending" 198 "day" 4 "Protagonist" "서연" "message" "" "조금 땄으면 거기서 그만두면 되는 거 아니야? 왜 계속했대?"))
-$rows.Add((New-ScenarioRow "v5_d3_case_cue_done" "v5_d3_case_cue_done_05" "study" "3" "16:00" "post_job_home" "schedule.job=complete;schedule.homework=pending" 198 "day" 5 "Seoyeon" "서연" "message" "seoyeon_worried" "한 번 잃고 나서는 그것만 되찾자고 했대. 그러다 친구한테 돈을 빌리고 학교와 알바도 계속 빠졌고."))
-$rows.Add((New-ScenarioRow "v5_d3_case_cue_done" "v5_d3_case_cue_done_06" "study" "3" "16:00" "post_job_home" "schedule.job=complete;schedule.homework=pending" 198 "day" 6 "Protagonist" "나" "overlay" "" "오늘 서연이가 보내 준 사례를 공부 앱에서 다시 읽어보자. 처음의 이득보다 손실을 되찾으려 한 뒤 무엇이 달라졌는지 봐야겠다." -Effects "flag.seoyeon_case_seen:set=true|tutorial:set=study" -Purpose "주인공의 질문을 통해 사례를 이해한 뒤 공부 앱으로 연결한다."))
-$rows.Add((New-ScenarioRow "v5_d3_case_cue_missed" "v5_d3_case_cue_missed_01" "study" "3" "afternoon" "job_missed" "schedule.job=missed;schedule.homework=pending" 170 "day" 1 "Seoyeon" "서연" "message" "seoyeon_worried" "어제 말한 사례 보내둘게. 처음엔 조금 땄다가, 잃은 돈을 되찾겠다고 친구에게 빌리고 약속까지 계속 놓친 이야기야."))
+$rows.Add((New-ScenarioRow "v5_d3_case_cue_done" "v5_d3_case_cue_done_01" "study" "3" "16:00" "post_job_home" "schedule.job=complete;schedule.homework=pending" 198 "day" 1 "Seoyeon" "서연" "message" "seoyeon_default" "아르바이트 끝났지? 어제 말한 사례 보내둘게. 우리 또래 학생이 가입 보너스로 도박을 시작했대."))
+$rows.Add((New-ScenarioRow "v5_d3_case_cue_done" "v5_d3_case_cue_done_02" "study" "3" "16:00" "post_job_home" "schedule.job=complete;schedule.homework=pending" 198 "day" 2 "Protagonist" "서연" "message" "" "응, 지금 집이야. 처음에는 어떻게 됐대?"))
+$rows.Add((New-ScenarioRow "v5_d3_case_cue_done" "v5_d3_case_cue_done_03" "study" "3" "16:00" "post_job_home" "schedule.job=complete;schedule.homework=pending" 198 "day" 3 "Seoyeon" "서연" "message" "seoyeon_default" "처음에는 가입 보너스로 돈을 쉽게 벌었대. 그 뒤에도 쉽게 돈을 벌 수 있을 것 같아서 계속했대."))
+$rows.Add((New-ScenarioRow "v5_d3_case_cue_done" "v5_d3_case_cue_done_04" "study" "3" "16:00" "post_job_home" "schedule.job=complete;schedule.homework=pending" 198 "day" 4 "Protagonist" "서연" "message" "" "처음에 이겼으니까 다음에도 돈을 벌 수 있다고 생각한 거야?"))
+$rows.Add((New-ScenarioRow "v5_d3_case_cue_done" "v5_d3_case_cue_done_05" "study" "3" "16:00" "post_job_home" "schedule.job=complete;schedule.homework=pending" 198 "day" 5 "Seoyeon" "서연" "message" "seoyeon_worried" "그런데 돈을 한 번 잃고 나서는 원금만 되찾으려고 했대."))
+$rows.Add((New-ScenarioRow "v5_d3_case_cue_done" "v5_d3_case_cue_done_06" "study" "3" "16:00" "post_job_home" "schedule.job=complete;schedule.homework=pending" 198 "day" 6 "Seoyeon" "서연" "message" "seoyeon_worried" "그러다가 친구에게 돈까지 빌려 도박하고, 학교와 아르바이트도 계속 빠졌다고 하더라고."))
+$rows.Add((New-ScenarioRow "v5_d3_case_cue_done" "v5_d3_case_cue_done_07" "study" "3" "16:00" "post_job_home" "schedule.job=complete;schedule.homework=pending" 198 "day" 7 "Protagonist" "나" "overlay" "" "오늘 서연이가 보내 준 사례를 공부 앱에서 다시 읽어보자. 처음의 이득보다 손실을 되찾으려 한 뒤 무엇이 달라졌는지 봐야겠다." -Effects "flag.seoyeon_case_seen:set=true|flag.d3_seoyeon_study_message_seen:set=true|tutorial:set=study" -Purpose "주인공의 질문을 통해 사례를 이해한 뒤 공부 앱으로 연결한다."))
+$rows.Add((New-ScenarioRow "v5_d3_case_cue_missed" "v5_d3_case_cue_missed_01" "study" "3" "afternoon" "job_missed" "schedule.job=missed;schedule.homework=pending" 170 "day" 1 "Seoyeon" "서연" "message" "seoyeon_worried" "어제 말한 사례 보내둘게. 처음에는 가입 보너스로 돈을 벌었지만, 손실을 되찾으려고 친구에게 돈을 빌리고 학교와 아르바이트까지 빠진 사례야."))
 $rows.Add((New-ScenarioRow "v5_d3_case_cue_missed" "v5_d3_case_cue_missed_02" "study" "3" "afternoon" "job_missed" "schedule.job=missed;schedule.homework=pending" 170 "day" 2 "Protagonist" "서연" "message" "" "응. 그냥 넘기면 안 될 것 같아. 지금 읽어볼게."))
-$rows.Add((New-ScenarioRow "v5_d3_case_cue_missed" "v5_d3_case_cue_missed_03" "study" "3" "afternoon" "job_missed" "schedule.job=missed;schedule.homework=pending" 170 "day" 3 "Protagonist" "나" "overlay" "" "오늘 서연이가 보내 준 사례에서 돈을 빌린 뒤 일정까지 무너진 부분을 정리하자." -Effects "flag.seoyeon_case_seen:set=true|tutorial:set=study"))
-$rows.Add((New-ScenarioRow "v5_d3_study_done" "v5_d3_study_done_01" "study" "3" "evening" "homework_complete" "" 205 "game" 1 "Protagonist" "서연" "message" "" "사례 다시 봤어. 처음 딴 돈보다, 잃은 돈을 되찾으려고 빌린 뒤 학교와 알바까지 놓친 부분이 제일 위험해 보여."))
+$rows.Add((New-ScenarioRow "v5_d3_case_cue_missed" "v5_d3_case_cue_missed_03" "study" "3" "afternoon" "job_missed" "schedule.job=missed;schedule.homework=pending" 170 "day" 3 "Protagonist" "나" "overlay" "" "오늘 서연이가 보내 준 사례에서 돈을 빌린 뒤 일정까지 무너진 부분을 정리하자." -Effects "flag.seoyeon_case_seen:set=true|flag.d3_seoyeon_study_message_seen:set=true|tutorial:set=study"))
+$rows.Add((New-ScenarioRow "v5_d3_study_done" "v5_d3_study_done_01" "study" "3" "evening" "homework_complete" "" 205 "game" 1 "Protagonist" "서연" "message" "" "보내 준 사례 다 읽어봤어. 처음 딴 돈보다, 잃은 돈을 되찾으려고 친구에게 돈까지 빌려 도박한 것과 학교와 아르바이트를 빠진 부분이 제일 위험해 보여."))
 $rows.Add((New-ScenarioRow "v5_d3_study_done" "v5_d3_study_done_02" "study" "3" "evening" "homework_complete" "" 205 "game" 2 "Seoyeon" "서연" "message" "seoyeon_default" "맞아. 손실을 만회하려고 빌리고 다시 시작한 순간부터 피해가 더 커졌어."))
 $rows.Add((New-ScenarioRow "v5_d3_study_done" "v5_d3_study_done_03" "study" "3" "evening" "homework_complete" "" 205 "game" 3 "Seoyeon" "서연" "message" "seoyeon_default" "월요일에는 이 사례랑 광고의 유혹 장치를 발표자료로 만들자."))
 $rows.Add((New-ScenarioRow "v5_d3_study_done" "v5_d3_study_done_04" "study" "3" "evening" "homework_complete" "" 205 "game" 4 "Protagonist" "서연" "message" "" "응. 월요일 학교에서 역할 나누고 같이 만들자." -Effects "project.progress:add=1|relation.seoyeon:add=1"))
@@ -218,7 +235,7 @@ $rows.Add((New-ScenarioRow "v5_d4_evening" "v5_d4_evening_01" "main" "4" "evenin
 $rows.Add((New-ScenarioRow "v5_d5_start_recovery" "v5_d5_start_recovery_01" "main" "5" "7:00" "day_start" "flag.help_requested=true;flag.late_wake_today!=true" 230 "game" 1 "Protagonist" "나" "narration" "" "화요일 아침. 어제 선생님께 말한 뒤 부모님과 상담 일정을 잡았다. 문제는 남아 있지만 더 숨기지는 않기로 했다." -Effects "tutorial:set=map"))
 $rows.Add((New-ScenarioRow "v5_d5_start_no_help" "v5_d5_start_no_help_01" "main" "5" "7:00" "day_start" "flag.help_requested!=true;counter.gamble_sessions>=3;flag.late_wake_today!=true" 229 "game" 1 "Protagonist" "나" "narration" "" "화요일 아침. 발표 날인데도 잃은 돈을 되찾을 생각부터 떠올랐다. 어제도 결국 아무에게도 말하지 못했다." -Effects "tutorial:set=map"))
 $rows.Add((New-ScenarioRow "v5_d5_start_prevented" "v5_d5_start_prevented_01" "main" "5" "7:00" "day_start" "counter.gamble_sessions<3;flag.late_wake_today!=true" 228 "game" 1 "Protagonist" "나" "narration" "" "화요일 아침. 오늘은 조별 발표가 있는 날이다. 유혹은 있었지만 해야 할 일을 먼저 끝낼 수 있었다." -Effects "tutorial:set=map"))
-$rows.Add((New-ScenarioRow "v5_d5_presentation" "v5_d5_presentation_01" "school" "5" "school" "school_complete" "schedule.project=complete" 240 "game" 1 "Seoyeon" "서연" "dialogue" "seoyeon_default" "그럼 발표 시작할게. 먼저 온라인 도박 광고가 왜 게임처럼 보이는지 설명해 줘."))
+$rows.Add((New-ScenarioRow "v5_d5_presentation" "v5_d5_presentation_01" "school" "5" "school" "school_complete" "schedule.project=complete" 240 "game" 1 "Seoyeon" "서연" "dialogue" "seoyeon_default" "그럼 발표를 시작하겠습니다."))
 $rows.Add((New-ScenarioRow "v5_d5_presentation" "v5_d5_presentation_02" "school" "5" "school" "school_complete" "schedule.project=complete" 240 "game" 2 "Protagonist" "나" "dialogue" "" "출석 보상이나 레벨, 무료 포인트 같은 익숙한 장치로 경계심을 낮춥니다. 하지만 이런 모양만으로 도박인지 판단할 수는 없습니다."))
 $rows.Add((New-ScenarioRow "v5_d5_presentation" "v5_d5_presentation_03" "school" "5" "school" "school_complete" "schedule.project=complete" 240 "game" 3 "Seoyeon" "서연" "dialogue" "seoyeon_default" "중요한 건 실제 돈이나 가치 있는 걸 걸고, 우연한 결과에 따라 이익과 손실이 생기는 구조인지 보는 겁니다."))
 $rows.Add((New-ScenarioRow "v5_d5_presentation" "v5_d5_presentation_04" "school" "5" "school" "school_complete" "schedule.project=complete" 240 "game" 4 "Teacher" "담임 선생님" "dialogue" "" "그럼 주변 친구가 손실을 되찾으려고 돈까지 빌리고 있다면 어떻게 해야 할까?"))
@@ -251,7 +268,8 @@ $rows.Add((New-ScenarioRow "v5_prevented_goal_mixed_router" "v5_prevented_goal_m
 $rows.Add((New-ScenarioRow "v5_prevented_goal_full" "v5_prevented_goal_full_01" "ending" "5" "ending" "v5_prevented_goal_full" "" 215 "game" 1 "Protagonist" "나" "dialogue" "" "주말 근무를 이틀 다 나간 덕분에 수리비 15만 원을 채웠다. 오래 걸렸지만 계획대로 모은 돈이었다." -Next "ending_prevented"))
 $rows.Add((New-ScenarioRow "v5_prevented_goal_mixed" "v5_prevented_goal_mixed_01" "ending" "5" "ending" "v5_prevented_goal_mixed" "" 215 "game" 1 "Protagonist" "나" "dialogue" "" "목표 금액은 채웠지만 도박에서 생긴 돈도 섞여 있다. 운 좋게 멈춘 것이지 안전한 방법이었던 건 아니다." -Next "ending_prevented"))
 $rows.Add((New-ScenarioRow "v5_prevented_goal_short" "v5_prevented_goal_short_01" "ending" "5" "ending" "v5_prevented_goal_short" "" 215 "game" 1 "Protagonist" "나" "dialogue" "" "수리비를 전부 채우진 못했다. 그래도 남은 금액과 일정을 다시 계산하니 언제 모을 수 있을지는 보였다." -Next "ending_prevented"))
-$rows.Add((New-ScenarioRow "ending_prevented" "ending_prevented_01" "ending" "5" "ending" "ending_prevented" "" 300 "game" 1 "Narrator" "" "ending" "" "유혹보다 일상을 먼저 선택했습니다. 스스로 멈춘 결정이 가장 중요한 예방이 되었습니다." -Effects "ending:set=prevented" -Purpose "성공 여부를 즉시 이해할 수 있는 예방 성공 카드다."))
+$rows.Add((New-ScenarioRow "ending_prevented" "ending_prevented_01" "ending" "5" "ending" "ending_prevented" "" 300 "game" 1 "Narrator" "" "ending" "" "유혹보다 일상을 먼저 선택했습니다." -Effects "ending:set=prevented" -Purpose "성공 여부를 즉시 이해할 수 있는 예방 성공 카드다."))
+$rows.Add((New-ScenarioRow "ending_prevented" "ending_prevented_02" "ending" "5" "ending" "ending_prevented" "" 300 "game" 2 "Narrator" "" "ending" "" "스스로 멈춘 결정이 가장 중요한 예방이 되었습니다."))
 $rows.Add((New-ScenarioRow "v5_d5_missed_recovery" "v5_d5_missed_recovery_01" "ending" "5" "night" "school_missed" "flag.help_requested=true" 220 "day" 1 "Teacher" "담임 선생님" "message" "" "오늘 학교에 못 왔구나. 발표보다 네 상태가 먼저야. 부모님과 약속한 상담은 그대로 진행하자."))
 $rows.Add((New-ScenarioRow "v5_d5_missed_recovery" "v5_d5_missed_recovery_02" "ending" "5" "night" "school_missed" "flag.help_requested=true" 220 "day" 2 "Protagonist" "담임 선생님" "message" "" "네. 오늘 상담은 피하지 않고 부모님과 같이 가겠습니다." -Next "v5_recovery_goal_router"))
 $rows.Add((New-ScenarioRow "v5_d5_missed_no_help" "v5_d5_missed_no_help_01" "ending" "5" "night" "school_missed" "flag.help_requested!=true;counter.gamble_sessions>=3" 219 "day" 1 "Teacher" "담임 선생님" "message" "" "오늘도 학교에 오지 않았구나. 보호자에게 연락해서 지금 상황부터 같이 확인하겠다."))
@@ -259,17 +277,29 @@ $rows.Add((New-ScenarioRow "v5_d5_missed_no_help" "v5_d5_missed_no_help_02" "end
 $rows.Add((New-ScenarioRow "v5_d5_missed_prevented" "v5_d5_missed_prevented_01" "ending" "5" "night" "school_missed" "counter.gamble_sessions<3" 218 "day" 1 "Seoyeon" "서연" "message" "seoyeon_worried" "오늘 발표에 못 왔네. 무슨 일 있는 건 아니지? 다음엔 일정이 꼬이기 전에 먼저 알려 줘."))
 $rows.Add((New-ScenarioRow "v5_d5_missed_prevented" "v5_d5_missed_prevented_02" "ending" "5" "night" "school_missed" "counter.gamble_sessions<3" 218 "day" 2 "Protagonist" "서연" "message" "" "미안해. 다음엔 늦기 전에 먼저 연락할게. 자료 챙겨줘서 고마워." -Next "v5_prevented_goal_router"))
 
+$displayTextFields = @(
+    "text", "choice_a_text", "choice_a_reply", "choice_b_text", "choice_b_reply",
+    "choice_c_text", "choice_c_reply", "purpose"
+)
+foreach ($row in $rows) {
+    foreach ($field in $displayTextFields) {
+        if ($row.$field) {
+            $row.$field = $row.$field.Replace("알바비", "아르바이트 일당").Replace("알바", "아르바이트")
+        }
+    }
+}
+
 $rows | Select-Object $columns | Export-Csv -LiteralPath (Join-Path $resourcePath "ScenarioV5.csv") -NoTypeInformation -Encoding utf8BOM -UseQuotes Always
 
 @(
     [pscustomobject]@{ day="1"; activity_title="조별과제 역할 확인"; progress_label="과제 계획"; activity_text="오늘 서연과 나눈 역할을 정리하는 중..."; question="월요일까지 내가 맡아 정리할 내용은 무엇이었지?"; choice_a="도박 피해 사례와 도움받을 곳"; choice_b="카페 메뉴와 근무 시간"; choice_c="발표 배경 음악과 영상"; answer_index="0"; correct_text="맞아. 피해 사례와 도움받을 곳을 조사하고 출처까지 적기로 했지."; wrong_text="오늘 서연과 나눈 역할을 다시 떠올려 보자. 내가 맡은 건 피해 사례와 도움받을 곳이었다." }
     [pscustomobject]@{ day="2"; activity_title="도박 문제 상담처 조사"; progress_label="상담 번호"; activity_text="서연에게 보낼 공식 상담 정보를 찾는 중..."; question="도박 문제로 상담받을 수 있는 전화번호는 무엇일까?"; choice_a="1333"; choice_b="1336"; choice_c="1338"; answer_index="1"; correct_text="맞아. 도박 문제 상담은 국번 없이 1336이야."; wrong_text="번호를 다시 확인하자. 도박 문제 상담은 국번 없이 1336이야." }
-    [pscustomobject]@{ day="2"; activity_title="도박 문제 상담처 조사"; progress_label="상담 내용"; activity_text="상담을 통해 받을 수 있는 도움을 정리하는 중..."; question="혼자 도박 문제를 해결하기 어렵다면 가장 적절한 행동은 무엇일까?"; choice_a="손실을 되찾을 때까지 숨긴다."; choice_b="믿을 만한 어른이나 1336에 상담한다."; choice_c="친구에게 돈을 빌려 해결한다."; answer_index="1"; correct_text="그래. 혼자 숨기기보다 믿을 만한 어른이나 전문 상담에 연결하는 게 중요해."; wrong_text="돈만 빌리거나 숨기면 문제가 더 커질 수 있어. 도움을 요청하는 방법을 다시 보자." }
-    [pscustomobject]@{ day="3"; activity_title="서연이 보낸 사례 분석"; progress_label="시작 계기"; activity_text="오늘 서연이가 보내 준 사례를 다시 읽는 중..."; question="사례 속 학생이 도박을 계속하게 된 첫 계기는 무엇이었을까?"; choice_a="무료 포인트로 조금 딴 경험"; choice_b="친구에게 혼난 경험"; choice_c="상담을 받은 경험"; answer_index="0"; correct_text="맞아. 처음의 작은 이득이 다음에도 쉽게 딸 수 있다는 기대를 만들었어."; wrong_text="오늘 서연이가 보내 준 사례의 시작을 다시 보자. 무료 포인트로 얻은 작은 이득이 계기였어." }
+    [pscustomobject]@{ day="2"; activity_title="도박 문제 상담처 조사"; progress_label="상담 내용"; activity_text="상담을 통해 받을 수 있는 도움을 정리하는 중..."; question="혼자 도박 문제를 해결하기 어렵다면 가장 적절한 행동은 무엇일까?"; choice_a="손실을 되찾을 때까지 숨긴다."; choice_b="선생님이나 1336에 상담한다."; choice_c="친구에게 돈을 빌려 해결한다."; answer_index="1"; correct_text="그래. 혼자 숨기기보다 믿을 만한 어른이나 전문 상담에 연결하는 게 중요해."; wrong_text="돈만 빌리거나 숨기면 문제가 더 커질 수 있어. 도움을 요청하는 방법을 다시 보자." }
+    [pscustomobject]@{ day="3"; activity_title="서연이 보낸 사례 분석"; progress_label="시작 계기"; activity_text="오늘 서연이가 보내 준 사례를 다시 읽는 중..."; question="사례 속 학생이 도박을 계속하게 된 첫 계기는 무엇이었을까?"; choice_a="가입 보너스로 돈을 번 경험"; choice_b="친구에게 혼난 경험"; choice_c="상담을 받은 경험"; answer_index="0"; correct_text="맞아. 한 번의 이득이 쉽게 돈을 벌 수 있다는 기대를 만들었어."; wrong_text="오늘 서연이가 보내 준 사례의 시작을 다시 보자. 가입 보너스로 얻은 첫 이득이 계기였어." }
     [pscustomobject]@{ day="3"; activity_title="서연이 보낸 사례 분석"; progress_label="위험 신호"; activity_text="사례에서 피해가 커진 지점을 표시하는 중..."; question="도박 문제가 더 깊어졌다는 가장 분명한 신호는 무엇일까?"; choice_a="친구와 게임 이야기를 했다."; choice_b="주말에 늦잠을 잤다."; choice_c="손실을 만회하려 돈을 빌렸다."; answer_index="2"; correct_text="그래. 손실을 되찾으려고 돈을 빌리고 다시 도박한 순간부터 피해가 더 커졌어."; wrong_text="오늘 서연이가 보내 준 사례에서 돈과 도박이 어떻게 이어졌는지 다시 살펴보자." }
-    [pscustomobject]@{ day="4"; activity_title="조별과제 발표자료 제작"; progress_label="유혹 장치"; activity_text="발표자료의 첫 번째 부분을 만드는 중..."; question="도박 사이트가 게임처럼 보이게 만드는 유혹 장치는 무엇일까?"; choice_a="레벨, 출석 보상, 무료 포인트"; choice_b="손실과 위험을 알리는 경고"; choice_c="이용을 멈추는 차단 기능"; answer_index="0"; correct_text="맞아. 게임에서 익숙한 보상처럼 보여 경계심을 낮출 수 있어."; wrong_text="위험 경고나 차단 기능은 이용을 멈추게 하는 장치야. 유혹에 쓰이는 요소를 다시 골라 보자." }
-    [pscustomobject]@{ day="4"; activity_title="조별과제 발표자료 제작"; progress_label="구분 기준"; activity_text="발표자료의 두 번째 부분을 만드는 중..."; question="겉모습이 비슷할 때 도박인지 구분하는 핵심 기준은 무엇일까?"; choice_a="캐릭터와 레벨이 있는지"; choice_b="실제 돈을 걸고 우연한 결과로 손익이 갈리는지"; choice_c="화면 효과와 음악이 화려한지"; answer_index="1"; correct_text="그래. 겉모습보다 돈을 거는 구조와 우연한 결과에 따른 손익을 봐야 해."; wrong_text="캐릭터나 화려한 효과는 일반 게임에도 있어. 실제 돈과 결과의 구조를 다시 생각해 보자." }
-    [pscustomobject]@{ day="4"; activity_title="조별과제 발표자료 제작"; progress_label="도움 방법"; activity_text="발표자료의 마지막 부분을 만드는 중..."; question="친구가 도박 문제를 털어놓으면 어떻게 돕는 것이 좋을까?"; choice_a="세게 혼내서 다시는 말하지 못하게 한다."; choice_b="빚을 대신 갚아주고 아무에게도 알리지 않는다."; choice_c="먼저 듣고 믿을 만한 어른이나 1336에 함께 연결한다."; answer_index="2"; correct_text="맞아. 먼저 이야기를 듣고 믿을 만한 어른과 전문 상담에 연결하는 게 중요해."; wrong_text="혼내거나 돈만 대신 갚아주면 더 숨길 수 있어. 도움을 연결하는 방법을 다시 보자." }
+    [pscustomobject]@{ day="4"; activity_title="조별과제 발표자료 제작"; progress_label="유혹 장치"; activity_text="발표자료의 첫 번째 부분을 만드는 중..."; question="도박 사이트가 게임처럼 보이게 만드는 유혹 장치는 무엇일까?"; choice_a="레벨·출석 보상·무료 포인트"; choice_b="손실 위험 경고"; choice_c="이용 차단 기능"; answer_index="0"; correct_text="맞아. 게임에서 익숙한 보상처럼 보여 경계심을 낮출 수 있어."; wrong_text="위험 경고나 차단 기능은 이용을 멈추게 하는 장치야. 유혹에 쓰이는 요소를 다시 골라 보자." }
+    [pscustomobject]@{ day="4"; activity_title="조별과제 발표자료 제작"; progress_label="구분 기준"; activity_text="발표자료의 두 번째 부분을 만드는 중..."; question="도박을 구분하는 핵심 기준은 무엇일까?"; choice_a="캐릭터와 레벨"; choice_b="돈을 거는 구조와 우연성"; choice_c="화려한 화면과 음악"; answer_index="1"; correct_text="그래. 실제 돈을 걸고 우연한 결과에 따라 이익이나 손실이 생기는 구조인지 봐야 해."; wrong_text="캐릭터나 화려한 효과는 일반 게임에도 있어. 돈을 거는 구조와 결과의 우연성을 다시 생각해 보자." }
+    [pscustomobject]@{ day="4"; activity_title="조별과제 발표자료 제작"; progress_label="도움 방법"; activity_text="발표자료의 마지막 부분을 만드는 중..."; question="친구가 도박 문제를 털어놓으면 어떻게 도울까?"; choice_a="혼내고 숨기게 한다."; choice_b="빚만 대신 갚아준다."; choice_c="이야기를 듣고 도움을 연결한다."; answer_index="2"; correct_text="맞아. 먼저 이야기를 듣고 믿을 만한 어른이나 1336 같은 전문 상담에 함께 연결하는 게 중요해."; wrong_text="혼내거나 돈만 대신 갚아주면 더 숨길 수 있어. 도움을 연결하는 방법을 다시 보자." }
 ) | Export-Csv -LiteralPath (Join-Path $resourcePath "StudyActivities.csv") -NoTypeInformation -Encoding utf8BOM -UseQuotes Always
 
 $flowKeep = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -280,8 +310,8 @@ foreach ($row in $oldFlow) {
     if ($flowKeep.Contains($row.scene_id)) { $flowRows.Add($row) }
 }
 $customReturnToTablet = @(
-    "v5_d2_start", "v5_d2_job", "v5_d2_minjae_after_miss", "v5_d2_missed_daytime", "v5_d2_study_cue_done", "v5_d2_study_cue_missed", "v5_d2_study_done", "v5_d2_night_done", "v5_d2_night_missed",
-    "v5_d3_start", "v5_d3_job_good", "v5_d3_job_return", "v5_d3_minjae_after_miss", "v5_d3_missed_daytime_first", "v5_d3_missed_daytime_fired", "v5_d3_case_cue_done", "v5_d3_case_cue_missed", "v5_d3_study_done", "v5_d3_night_done", "v5_d3_night_missed",
+    "v5_d2_start", "v5_d2_minjae", "v5_d2_job", "v5_d2_minjae_after_miss", "v5_d2_missed_daytime", "v5_d2_study_cue_done", "v5_d2_study_cue_missed", "v5_d2_study_done", "v5_d2_night_done", "v5_d2_night_missed",
+    "v5_d3_start", "v5_d3_minjae_none", "v5_d3_minjae_profit", "v5_d3_minjae_loss", "v5_d3_job_good", "v5_d3_job_return", "v5_d3_minjae_after_miss", "v5_d3_missed_daytime_first", "v5_d3_missed_daytime_fired", "v5_d3_case_cue_done", "v5_d3_case_cue_missed", "v5_d3_study_done", "v5_d3_night_done", "v5_d3_night_missed",
     "v5_d4_start_stable", "v5_d4_start_risk", "v5_d4_help_response", "v5_d4_hide_result",
     "v5_d4_study_done_stable", "v5_d4_study_done_risk", "v5_d4_evening",
     "v5_d5_start_recovery", "v5_d5_start_no_help", "v5_d5_start_prevented"

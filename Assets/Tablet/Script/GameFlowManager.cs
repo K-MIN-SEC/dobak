@@ -655,8 +655,15 @@ public sealed class GameFlowManager : MonoBehaviour
 
         if (IsWeekend && !jobDone)
         {
-            ShowFeedback("오늘 알바 일정을 먼저 해결한 뒤 조별과제를 진행하자.");
+            ShowFeedback("오늘 아르바이트 일정을 먼저 해결한 뒤 조별과제를 진행하자.");
             V3MarkAppAttention(AppType.Map);
+            return false;
+        }
+
+        if (IsWeekend && scenarioV3 != null && !scenarioV3.HasSeenRequiredWeekendStudyMessage)
+        {
+            ShowFeedback("공부하기 전에 서연이 보낸 메시지부터 확인하자.");
+            V3MarkAppAttention(AppType.Message);
             return false;
         }
 
@@ -1656,6 +1663,12 @@ public sealed class GameFlowManager : MonoBehaviour
         {
             V3ShowDialogue("나", "(아직 오늘 해야 할 일이 남아 있다. 학교부터 다녀오자.)",
                 () => V3MarkAppAttention(AppType.Map));
+            return;
+        }
+        if (IsWeekend && V3HasStudyToday && !scenarioV3.HasSeenRequiredWeekendStudyMessage)
+        {
+            V3ShowDialogue("나", "(공부하기 전에 서연이 보낸 메시지부터 확인하자.)",
+                () => V3MarkAppAttention(AppType.Message));
             return;
         }
         if (V3HasStudyToday && !homeworkDone)

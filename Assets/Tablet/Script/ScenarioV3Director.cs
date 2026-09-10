@@ -169,6 +169,19 @@ public sealed class ScenarioV3Director : MonoBehaviour
     public bool HasCompletedInitialMessageIntro =>
         GetState("flag.d1_mom_message_read") == "true" &&
         GetState("flag.minjae_first_invite_read") == "true";
+    public bool HasSeenRequiredWeekendStudyMessage
+    {
+        get
+        {
+            if (flow == null || !flow.IsWeekend || !flow.V3HasStudyToday)
+                return true;
+            if (flow.CurrentDay == 2)
+                return GetState("flag.d2_seoyeon_study_message_seen") == "true";
+            if (flow.CurrentDay == 3)
+                return GetState("flag.d3_seoyeon_study_message_seen") == "true";
+            return true;
+        }
+    }
 
     private string SavePath => Path.Combine(Application.persistentDataPath, "scenario_v3_history.json");
 

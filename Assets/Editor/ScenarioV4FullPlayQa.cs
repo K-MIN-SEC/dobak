@@ -46,13 +46,14 @@ public static class ScenarioV4FullPlayQa
     private static string lastLine = string.Empty;
     private static string lastCapturedScene = string.Empty;
     private static readonly HashSet<int> capturedDays = new HashSet<int>();
-    private static readonly HashSet<int> capturedQuizDays = new HashSet<int>();
+    private static readonly HashSet<string> capturedQuizQuestions = new HashSet<string>();
     private static readonly HashSet<int> capturedOfferDays = new HashSet<int>();
     private static bool quizOpen;
     private static bool testedWrongAnswer;
     private static bool replyBubbleVerified;
     private static bool capturedChoiceDebug;
     private static bool capturedManagerHeader;
+    private static bool day2MinjaeBackVerified;
     private static double choiceSubmittedAt;
     private static bool failed;
     private static bool previousOptionsEnabled;
@@ -154,6 +155,7 @@ public static class ScenarioV4FullPlayQa
         replyBubbleVerified = false;
         capturedChoiceDebug = false;
         capturedManagerHeader = false;
+        day2MinjaeBackVerified = false;
         choiceSubmittedAt = 0d;
         routeCompleted = false;
         repeatLossObserved = false;
@@ -174,7 +176,7 @@ public static class ScenarioV4FullPlayQa
         lastCapturedScene = string.Empty;
         observedDay = 0;
         capturedDays.Clear();
-        capturedQuizDays.Clear();
+        capturedQuizQuestions.Clear();
         capturedOfferDays.Clear();
         string save = Path.Combine(Application.persistentDataPath, "scenario_v3_history.json");
         if (File.Exists(save))
@@ -342,6 +344,8 @@ public static class ScenarioV4FullPlayQa
                 Expect(director.GetState("ending") == "prevented", $"Expected prevented ending, got {director.GetState("ending")}.");
                 Expect(int.Parse(director.GetState("counter.gamble_sessions")) == 0,
                     "No-gamble route incorrectly recorded a gambling session.");
+                Expect(day2MinjaeBackVerified,
+                    "Closing Minjae's day-2 conversation did not return to the tablet home screen.");
             }
             else if (route == Route.NoHelp)
             {
@@ -639,6 +643,18 @@ public static class ScenarioV4FullPlayQa
         }
 
         DialogueManager visibleDialogue = GetPrivate<DialogueManager>(director, "dialogue");
+        if (!day2MinjaeBackVerified && route == Route.NoGamble &&
+            director.ActiveSceneId == "v5_d2_minjae" &&
+            GetPrivateValue<bool>(director, "waitingForMessageSceneClose") &&
+            apps.CurrentAppType == AppType.Message && visibleDialogue != null && visibleDialogue.IsDialogueOpen)
+        {
+            visibleDialogue.CloseDialogue();
+            day2MinjaeBackVerified = apps.CurrentAppType == null;
+            Expect(day2MinjaeBackVerified,
+                "Minjae's day-2 back button closed only the conversation panel and left the Message app open.");
+            nextActionAt = EditorApplication.timeSinceStartup + SceneSettleDelay;
+            return;
+        }
         if (!capturedManagerHeader && route == Route.Collapse && apps.CurrentAppType == AppType.Message &&
             visibleDialogue != null && visibleDialogue.IsConversationOpen(SpeakerType.CafeManager))
         {
@@ -974,11 +990,12 @@ public static class ScenarioV4FullPlayQa
         if (available == null || available.Count == 0)
             return;
 
-        if (capturedQuizDays.Add(flow.CurrentDay))
-            Capture($"quiz-day-{flow.CurrentDay:00}.png");
-
         List<StudyActivityQuestion> questions = GetPrivate<List<StudyActivityQuestion>>(quiz, "currentQuestions");
         int questionIndex = GetPrivateValue<int>(quiz, "currentIndex");
+        string captureKey = $"{flow.CurrentDay}:{questionIndex}";
+        if (capturedQuizQuestions.Add(captureKey))
+            Capture($"quiz-day-{flow.CurrentDay:00}-question-{questionIndex + 1:00}.png");
+
         StudyActivityQuestion currentQuestion = questions != null && questionIndex >= 0 && questionIndex < questions.Count
             ? questions[questionIndex]
             : null;
