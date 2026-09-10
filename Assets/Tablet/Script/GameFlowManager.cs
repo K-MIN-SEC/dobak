@@ -1745,22 +1745,29 @@ public sealed class GameFlowManager : MonoBehaviour
         if (homeChecklistLines.Count == 0)
             return;
 
-        string goalLine = $"노트북 수리비  {V3BankCash:N0} / 150,000원";
+        int goalPercent = Mathf.Clamp(Mathf.RoundToInt(V3BankCash / 1500f), 0, 100);
+        string goalLine = $"수리비  {V3BankCash:N0} / 150,000원  ({goalPercent}%)";
         string debtLine = debt > 0 ? $"빌린 돈  {debt:N0}원" : "";
         bool knowsProject = scenarioV3 == null || currentDay > 1 || schoolDone ||
                             string.Equals(scenarioV3.GetState("flag.project_introduced"), "true", StringComparison.OrdinalIgnoreCase);
         string schoolMark = V3ScheduleMark("school", schoolDone);
         string homeworkMark = V3ScheduleMark("homework", homeworkDone);
         string jobMark = V3ScheduleMark("job", jobDone);
+        int projectProgress = string.Equals(scenarioV3?.GetState("schedule.project"), "complete",
+            StringComparison.OrdinalIgnoreCase)
+            ? 3
+            : int.TryParse(scenarioV3?.GetState("project.progress"), out int savedProgress)
+                ? Mathf.Clamp(savedProgress, 0, 2)
+                : 0;
         string studyLine = !knowsProject
             ? ""
             : V3HasStudyToday
-                ? $"{homeworkMark} {quizManager.CurrentActivityTitle}"
-                : "오늘은 별도 과제 없음";
+                ? $"{homeworkMark} 오늘 공부 · 발표 준비 {projectProgress}/3"
+                : $"오늘 공부 없음 · 발표 준비 {projectProgress}/3";
         string[] lines = IsWeekend
             ? new[]
             {
-                $"{jobMark} 카페 알바  08:00~16:00",
+                $"{jobMark} 카페 아르바이트  08:00~16:00",
                 studyLine,
                 goalLine,
                 debtLine

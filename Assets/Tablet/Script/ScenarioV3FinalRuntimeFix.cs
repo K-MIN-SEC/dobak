@@ -19,7 +19,7 @@ using UnityEngine.UI;
 public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
 {
     private const string TabletSceneName = "TabletUI";
-    private const string PatchVersion = "V27.0-FiveDayCampaign";
+    private const string PatchVersion = "V27.1-GameplayFeedback";
 
     private GameFlowManager flow;
     private ScenarioV3Director director;
@@ -328,6 +328,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         PatchScenarioProsePass();
         PatchMultiLenderEndingChain();
         AddExtendedGamblingScenes();
+        PatchGambleResultChoices();
 
         HashSet<string> returnToTablet = GetField<HashSet<string>>(database, "returnToTabletScenes");
         returnToTablet?.Remove("d10_seojun_followup");
@@ -1155,6 +1156,37 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         returnToTablet?.Add("gamble_8");
     }
 
+    private void PatchGambleResultChoices()
+    {
+        foreach (string sceneId in new[] { "gamble_2", "gamble_6", "gamble_7", "gamble_8", "gamble_repeat_loss" })
+        {
+            ScenarioV3Scene scene = database.GetScene(sceneId);
+            if (scene == null || scene.lines.Count == 0)
+                continue;
+
+            ScenarioV3Line resultLine = scene.lines[scene.lines.Count - 1];
+            if (resultLine.Choices.Any())
+                continue;
+
+            resultLine.choiceA = new ScenarioV3Choice
+            {
+                id = sceneId + "_continue",
+                text = "한 판 더 한다",
+                replyText = string.Empty,
+                effects = "gamble:advance",
+                nextSceneId = string.Empty
+            };
+            resultLine.choiceB = new ScenarioV3Choice
+            {
+                id = sceneId + "_stop",
+                text = "여기서 그만둔다",
+                replyText = string.Empty,
+                effects = "counter.refusals:add=1",
+                nextSceneId = string.Empty
+            };
+        }
+    }
+
     private static ScenarioV3Scene CreateScene(
         string id, string arc, string day, string timeWindow, int priority, params ScenarioV3Line[] lines)
     {
@@ -1279,12 +1311,13 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         if (GetField<bool>(flow, "isTransitioning"))
             return;
 
-        // The home launcher must respect the same required-schedule gate as the
-        // original app button. Route it through GameFlowManager so the player gets
-        // the appropriate school, job, or study prompt instead of a gamble choice.
-        if ((flow.IsWeekend && !flow.IsJobDone) ||
-            (!flow.IsWeekend && !flow.IsSchoolDone) ||
-            (flow.V3HasStudyToday && !flow.IsHomeworkDone))
+        // The weekend Seoyeon message is a narrative prerequisite for the study scene,
+        // so it remains a hard gate. Required school, job, and study tasks are presented
+        // as an explicit trade-off below instead of silently disabling gambling.
+        bool weekendJobResolved = !string.Equals(GetDirectorState("schedule.job"), "pending",
+            StringComparison.OrdinalIgnoreCase);
+        if (flow.IsWeekend && weekendJobResolved && flow.V3HasStudyToday &&
+            !director.HasSeenRequiredWeekendStudyMessage)
         {
             InvokePrivate(flow, "StartScenarioGambling");
             return;
@@ -1345,9 +1378,31 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
         }
 
         string decisionText = BuildGambleDecisionText();
+        AppType? pendingScheduleApp = GetPendingScheduleApp();
         ShowManualChoiceOverlay(decisionText,
-            new ManualChoiceOption("한다", BeginConfirmedGamble),
-            new ManualChoiceOption("하지 않는다", () => { }));
+            new ManualChoiceOption(pendingScheduleApp.HasValue ? "그래도 도박한다" : "도박한다", BeginConfirmedGamble),
+            new ManualChoiceOption(pendingScheduleApp.HasValue ? "일정부터 한다" : "앱을 닫는다",
+                () => FocusPendingSchedule(pendingScheduleApp)));
+    }
+
+    private AppType? GetPendingScheduleApp()
+    {
+        if (flow.IsWeekend &&
+            string.Equals(GetDirectorState("schedule.job"), "pending", StringComparison.OrdinalIgnoreCase))
+            return AppType.Map;
+        if (!flow.IsWeekend &&
+            string.Equals(GetDirectorState("schedule.school"), "pending", StringComparison.OrdinalIgnoreCase))
+            return AppType.Map;
+        if (flow.V3HasStudyToday &&
+            string.Equals(GetDirectorState("schedule.homework"), "pending", StringComparison.OrdinalIgnoreCase))
+            return AppType.Study;
+        return null;
+    }
+
+    private void FocusPendingSchedule(AppType? target)
+    {
+        if (target.HasValue)
+            flow.V3MarkAppAttention(target.Value);
     }
 
     private string BuildGambleDecisionText()
@@ -1365,8 +1420,8 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             string.Equals(GetDirectorState("schedule.job"), "pending", StringComparison.OrdinalIgnoreCase))
         {
             if (projectedHour > 8)
-                return $"한 판에 {timeText} 정도 걸린다. 지금 시작하면 {FormatHour(projectedHour)}쯤이라 오늘 알바를 놓치게 된다. 그래도 할까?";
-            return $"한 판에 {timeText} 정도 걸린다. 오전 8시 알바도 남아 있다. 그래도 지금 할까?";
+                return $"한 판에 {timeText} 정도 걸린다. 지금 시작하면 {FormatHour(projectedHour)}쯤이라 오늘 아르바이트를 놓치게 된다. 그래도 할까?";
+            return $"한 판에 {timeText} 정도 걸린다. 오전 8시 아르바이트도 남아 있다. 그래도 지금 할까?";
         }
 
         if (!flow.IsWeekend && !flow.IsSchoolDone &&
@@ -1379,7 +1434,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             return $"한 판에 {timeText} 정도 걸린다. 학교 일정도 남아 있다. 그래도 지금 할까?";
         }
 
-        if (!flow.IsWeekend && flow.V3HasStudyToday && !flow.IsHomeworkDone &&
+        if (flow.V3HasStudyToday && !flow.IsHomeworkDone &&
             string.Equals(GetDirectorState("schedule.homework"), "pending", StringComparison.OrdinalIgnoreCase))
         {
             return $"한 판에 {timeText} 정도 걸린다. 오늘 공부도 아직 남아 있다. 그래도 지금 할까?";
@@ -1479,7 +1534,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
                             ? " · 지금 출근 가능"
                             : " · 오늘 근무 놓침";
                 }
-                lines[0].text = $"{mark} 카페 알바  08:00~16:00{detail}";
+                lines[0].text = $"{mark} 카페 아르바이트  08:00~16:00{detail}";
             }
             return;
         }
@@ -1507,7 +1562,11 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             string detail = string.Equals(homework, "pending", StringComparison.OrdinalIgnoreCase)
                 ? " · 약 2시간"
                 : string.Empty;
-            lines[1].text = $"{mark} 오늘 공부{detail}";
+            int projectProgress = string.Equals(GetDirectorState("schedule.project"), "complete",
+                StringComparison.OrdinalIgnoreCase)
+                ? 3
+                : Mathf.Clamp(GetDirectorInt("project.progress"), 0, 2);
+            lines[1].text = $"{mark} 오늘 공부{detail} · 발표 준비 {projectProgress}/3";
         }
     }
 

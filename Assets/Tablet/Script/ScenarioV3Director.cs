@@ -746,8 +746,25 @@ public sealed class ScenarioV3Director : MonoBehaviour
         }
         if (GetState("schedule.school") == "missed")
             QueueTrigger("school_missed", null);
-        QueueTrigger("day_end", AdvanceToNextDay);
+        QueueTrigger("day_end", () => ShowDailySummary(AdvanceToNextDay));
         StartQueuedScene();
+    }
+
+    private void ShowDailySummary(Action completed)
+    {
+        string primarySchedule = flow.IsWeekend ? "아르바이트" : "학교";
+        string primaryStatus = StatusText(GetState(flow.IsWeekend ? "schedule.job" : "schedule.school"));
+        string studyStatus = flow.V3HasStudyToday
+            ? StatusText(GetState("schedule.homework"))
+            : "일정 없음";
+        int cashDelta = GetInt("cash_delta_today");
+        string deltaText = cashDelta == 0 ? "변동 없음" : cashDelta.ToString("+#,0원;-#,0원", CultureInfo.InvariantCulture);
+        string debtText = flow.CurrentDebt > 0 ? $"\n빌린 돈  {flow.CurrentDebt:N0}원" : string.Empty;
+        string body = $"{primarySchedule}  {primaryStatus}  ·  공부  {studyStatus}\n" +
+                      $"수리비  {flow.V3BankCash:N0} / 150,000원  ({deltaText}){debtText}";
+
+        if (!flow.V3ShowDialogue("하루 결과", body, completed))
+            completed?.Invoke();
     }
 
     public void ClearSavedRun()

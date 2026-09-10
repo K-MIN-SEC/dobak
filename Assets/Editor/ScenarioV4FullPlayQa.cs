@@ -75,7 +75,6 @@ public static class ScenarioV4FullPlayQa
     private static bool jobGateVerified;
     private static bool weekendStudyGateAttempted;
     private static bool weekendStudyGateVerified;
-    private static string expectedScheduleGateText = string.Empty;
 
     private const double UiSettleDelay = 0.12d;
     private const double SceneSettleDelay = 0.7d;
@@ -170,7 +169,6 @@ public static class ScenarioV4FullPlayQa
         jobGateVerified = false;
         weekendStudyGateAttempted = false;
         weekendStudyGateVerified = false;
-        expectedScheduleGateText = string.Empty;
         pendingMapTarget = string.Empty;
         lastLine = string.Empty;
         lastCapturedScene = string.Empty;
@@ -358,8 +356,8 @@ public static class ScenarioV4FullPlayQa
             else if (route == Route.Collapse)
             {
                 ExpectWeekendScheduleScenes("missed");
-                Expect(jobGateVerified, "Weekend gambling was not verified as blocked before the job schedule.");
-                Expect(weekendStudyGateVerified, "Weekend gambling was not verified as blocked before study.");
+                Expect(jobGateVerified, "Weekend gambling warning was not verified before the job schedule.");
+                Expect(weekendStudyGateVerified, "Weekend gambling warning was not verified before study.");
                 Expect(director.GetState("ending") == "collapse", $"Expected collapse ending, got {director.GetState("ending")}.");
                 Expect(int.Parse(director.GetState("counter.job_failures")) >= 2,
                     "Collapse route did not record both missed weekend shifts.");
@@ -393,16 +391,6 @@ public static class ScenarioV4FullPlayQa
         {
             TMP_Text title = GetPrivate<TMP_Text>(flow, "narrationTitleText");
             TMP_Text body = GetPrivate<TMP_Text>(flow, "narrationBodyText");
-            if (!string.IsNullOrEmpty(expectedScheduleGateText))
-            {
-                bool matched = body != null && body.text.Contains(expectedScheduleGateText);
-                Expect(matched, $"Expected schedule gate dialogue containing '{expectedScheduleGateText}', got '{body?.text}'.");
-                if (expectedScheduleGateText == "알바부터 다녀오자")
-                    jobGateVerified = matched;
-                else if (expectedScheduleGateText == "공부부터 끝내자")
-                    weekendStudyGateVerified = matched;
-                expectedScheduleGateText = string.Empty;
-            }
             string dialogueKey = $"{title?.text}\n{body?.text}";
             if (dialogueKey != lastBlockingDialogue)
             {
@@ -494,9 +482,22 @@ public static class ScenarioV4FullPlayQa
             return;
         }
 
+        Button scheduleFirst = FindButtonWithText("일정부터 한다");
+        if (scheduleFirst != null)
+        {
+            if (flow.IsWeekend && !flow.IsJobDone)
+                jobGateVerified = true;
+            else if (flow.V3HasStudyToday && !flow.IsHomeworkDone)
+                weekendStudyGateVerified = true;
+            scheduleFirst.onClick.Invoke();
+            nextActionAt = EditorApplication.timeSinceStartup + UiSettleDelay;
+            return;
+        }
+
         // The real home launcher asks for one final confirmation before entering
         // the fixed-result gambling sequence. Confirm it just as a player would.
-        Button gambleConfirmation = FindButtonWithText("한다");
+        Button gambleConfirmation = FindButtonWithText("도박한다") ??
+                                    FindButtonWithText("그래도 도박한다");
         if (gambleConfirmation != null)
         {
             gambleConfirmation.onClick.Invoke();
@@ -544,7 +545,6 @@ public static class ScenarioV4FullPlayQa
                         return;
                     }
                     jobGateAttempted = true;
-                    expectedScheduleGateText = "알바부터 다녀오자";
                     launcher.onClick.Invoke();
                     nextActionAt = EditorApplication.timeSinceStartup + UiSettleDelay;
                     return;
@@ -577,7 +577,6 @@ public static class ScenarioV4FullPlayQa
                         return;
                     }
                     weekendStudyGateAttempted = true;
-                    expectedScheduleGateText = "공부부터 끝내자";
                     launcher.onClick.Invoke();
                     nextActionAt = EditorApplication.timeSinceStartup + UiSettleDelay;
                     return;
@@ -818,11 +817,12 @@ public static class ScenarioV4FullPlayQa
     {
         string[] recoveryChoices =
         {
-            "g3_chase", "g4_continue", "g5_borrow", "borrow_mom", "d13_tell_teacher"
+            "gamble_2_stop", "gamble_6_stop", "g3_chase", "g4_continue", "g5_borrow", "borrow_mom",
+            "d13_tell_teacher"
         };
         string[] preventionChoices =
         {
-            "g3_stop", "g4_stop", "g5_stop"
+            "gamble_2_stop", "gamble_6_stop", "gamble_7_stop", "gamble_8_stop", "g3_stop", "g4_stop", "g5_stop"
         };
         string[] noGambleChoices =
         {
@@ -830,35 +830,37 @@ public static class ScenarioV4FullPlayQa
         };
         string[] noFundsChoices =
         {
-            "g3_chase", "g4_continue", "g5_stop", "minjae_loan_reject"
+            "gamble_2_continue", "gamble_6_stop", "g3_chase", "g4_continue", "g5_stop", "minjae_loan_reject"
         };
         string[] noHelpChoices =
         {
-            "g3_chase", "g4_continue", "g5_stop", "d13_hide_again"
+            "gamble_2_stop", "gamble_6_stop", "g3_chase", "g4_continue", "g5_stop", "d13_hide_again"
         };
         string[] minjaeDebtChoices =
         {
-            "g3_chase", "g4_continue", "g5_stop", "minjae_loan_accept", "d13_tell_teacher"
+            "gamble_2_stop", "gamble_6_stop", "g3_chase", "g4_continue", "g5_stop", "minjae_loan_accept",
+            "d13_tell_teacher"
         };
         string[] seojunDebtChoices =
         {
-            "g3_chase", "g4_continue", "g5_borrow", "borrow_friend", "borrow_morning_seojun",
+            "gamble_2_stop", "gamble_6_stop", "g3_chase", "g4_continue", "g5_borrow", "borrow_friend", "borrow_morning_seojun",
             "d13_tell_teacher"
         };
         string[] loanHeldChoices =
         {
-            "g3_chase", "g4_continue", "g5_borrow", "borrow_friend", "borrow_morning_seojun",
+            "gamble_2_stop", "gamble_6_stop", "g3_chase", "g4_continue", "g5_borrow", "borrow_friend", "borrow_morning_seojun",
             "d13_tell_teacher"
         };
         string[] repeatLossChoices =
         {
-            "g3_chase", "g4_continue", "g5_borrow", "borrow_mom", "borrow_morning_mom",
+            "gamble_2_continue", "gamble_6_continue", "gamble_7_continue", "gamble_8_continue",
+            "gamble_repeat_loss_continue", "g3_chase", "g4_continue", "g5_borrow", "borrow_mom", "borrow_morning_mom",
             "borrow_friend", "borrow_morning_seojun", "borrow_minjae", "borrow_morning_minjae",
             "d13_tell_teacher"
         };
         string[] projectFailChoices =
         {
-            "g3_stop", "d13_tell_teacher"
+            "gamble_2_stop", "g3_stop", "d13_tell_teacher"
         };
         if (route == Route.MixedA || route == Route.MixedB || route == Route.MixedC)
         {
