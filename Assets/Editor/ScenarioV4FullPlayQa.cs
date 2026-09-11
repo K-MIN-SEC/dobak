@@ -80,8 +80,10 @@ public static class ScenarioV4FullPlayQa
     private static bool weekendStudyGateAttempted;
     private static bool weekendStudyGateVerified;
     private static bool forceWeekendLateWake;
+    private static bool forceWeekendQueueLoss;
     private static bool weekendLateWakeStarted;
     private static bool weekendArchivedMessageVerified;
+    private static bool weekendQueueLossInjected;
 
     private const double UiSettleDelay = 0.12d;
     private const double SceneSettleDelay = 0.7d;
@@ -92,11 +94,19 @@ public static class ScenarioV4FullPlayQa
     public static void RunNoGamble()
     {
         forceWeekendLateWake = false;
+        forceWeekendQueueLoss = false;
         Run(Route.NoGamble);
     }
     public static void RunWeekendLateWake()
     {
         forceWeekendLateWake = true;
+        forceWeekendQueueLoss = false;
+        Run(Route.NoGamble);
+    }
+    public static void RunWeekendLateWakeRecovery()
+    {
+        forceWeekendLateWake = true;
+        forceWeekendQueueLoss = true;
         Run(Route.NoGamble);
     }
     public static void RunNoHelp() => Run(Route.NoHelp);
@@ -191,6 +201,7 @@ public static class ScenarioV4FullPlayQa
         weekendStudyGateVerified = false;
         weekendLateWakeStarted = false;
         weekendArchivedMessageVerified = false;
+        weekendQueueLossInjected = false;
         pendingMapTarget = string.Empty;
         lastLine = string.Empty;
         lastCapturedScene = string.Empty;
@@ -409,6 +420,15 @@ public static class ScenarioV4FullPlayQa
                         "The normal day-2 Minjae work choice appeared after the shift was already missed.");
                     ExpectLineBefore("sys_late_gamble_morning_weekend_02", "v5_d2_job_missed_01");
                     ExpectLineBefore("v5_d2_job_missed_01", "v5_d2_minjae_after_miss_01");
+                    if (forceWeekendQueueLoss)
+                    {
+                        Expect(weekendQueueLossInjected,
+                            "The weekend missed-job queue-loss condition was not injected.");
+                        ExpectLineBefore("v5_d2_minjae_after_miss_04", "v5_d2_missed_daytime_01");
+                        ExpectLineBefore("v5_d2_missed_daytime_01", "v5_d2_study_cue_missed_01");
+                        Expect(director.HasSeenRequiredWeekendStudyMessage,
+                            "The recovered Seoyeon study message did not unlock Study/Gamble.");
+                    }
                 }
                 else
                 {
@@ -456,6 +476,15 @@ public static class ScenarioV4FullPlayQa
 
         if (!string.IsNullOrEmpty(director.ActiveSceneId))
             observedScenes.Add(director.ActiveSceneId);
+
+        if (forceWeekendQueueLoss && !weekendQueueLossInjected &&
+            director.ActiveSceneId == "v5_d2_job_missed")
+        {
+            Queue<ScenarioV3Scene> queuedScenes = GetPrivate<Queue<ScenarioV3Scene>>(director, "sceneQueue");
+            queuedScenes?.Clear();
+            weekendQueueLossInjected = true;
+            Debug.Log("[SCENARIO V4 QA] Injected weekend missed-job queue loss after the manager scene.");
+        }
 
         GameObject blockingNarration = GameObject.Find("Narration Dialogue");
         if (blockingNarration != null && blockingNarration.activeInHierarchy)

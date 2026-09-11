@@ -343,7 +343,16 @@ public sealed class ScenarioV3Director : MonoBehaviour
     {
         if (!IsReady || flow == null || flow.IsGameEnded ||
             flow.CurrentLocation != "집" || activeScene != null || sceneQueue.Count > 0 ||
-            waitingForMessageChoice || waitingForMessageSceneClose || HasPendingMessageAction)
+            waitingForMessageChoice || waitingForMessageSceneClose)
+            return;
+
+        // A late weekend wake-up can leave the manager reply complete while the rest of the
+        // job-missed queue is lost. Recover the unseen remainder even when an older archived
+        // message still contributes to unread_count; that unread must not deadlock Study/Gamble.
+        if (TryRecoverMissingWeekendStudyCue())
+            return;
+
+        if (HasPendingMessageAction)
             return;
 
         // The clock advances through player actions rather than real time. Check the study
@@ -1900,6 +1909,52 @@ public sealed class ScenarioV3Director : MonoBehaviour
         if (TryQueueBedtimeCue())
             return;
         StartQueuedScene();
+    }
+
+    private bool TryRecoverMissingWeekendStudyCue()
+    {
+        if (!flow.IsWeekend || !flow.V3HasStudyToday ||
+            GetState("schedule.job") != "missed" || GetState("schedule.homework") != "pending" ||
+            HasSeenRequiredWeekendStudyMessage || pendingOutgoingLine != null ||
+            waitingForIncomingMessageRead || incomingMessageCoroutine != null || HasPreparedBorrowMessage)
+            return false;
+
+        string[] sceneIds = flow.CurrentDay switch
+        {
+            2 => new[]
+            {
+                "v5_d2_minjae_after_miss",
+                "v5_d2_missed_daytime",
+                "v5_d2_study_cue_missed"
+            },
+            3 => new[]
+            {
+                "v5_d3_minjae_after_miss",
+                GetState("flag.job_fired") == "true"
+                    ? "v5_d3_missed_daytime_fired"
+                    : "v5_d3_missed_daytime_first",
+                "v5_d3_case_cue_missed"
+            },
+            _ => Array.Empty<string>()
+        };
+
+        int queued = 0;
+        foreach (string sceneId in sceneIds)
+        {
+            ScenarioV3Scene scene = database.GetScene(sceneId);
+            if (scene == null || !MatchesDay(scene.day) || !EvaluateCondition(scene.condition) || WasSeen(scene))
+                continue;
+
+            sceneQueue.Enqueue(scene);
+            queued++;
+        }
+
+        if (queued == 0)
+            return false;
+
+        Debug.Log($"[Scenario V3] 주말 결근 뒤 누락된 공부 안내 {queued}개 장면을 복구합니다.");
+        StartQueuedScene();
+        return true;
     }
 
     private bool TryQueueEveningFill()
