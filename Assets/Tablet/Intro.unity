@@ -1154,7 +1154,7 @@ MonoBehaviour:
   m_spriteAsset: {fileID: 0}
   m_tintAllSprites: 0
   m_StyleSheet: {fileID: 0}
-  m_TextStyleHashCode: 0
+  m_TextStyleHashCode: -1183493901
   m_overrideHtmlColors: 0
   m_faceColor:
     serializedVersion: 2
@@ -1511,7 +1511,7 @@ Canvas:
   m_SortingBucketNormalizedSize: 0
   m_VertexColorAlwaysGammaSpace: 0
   m_UseReflectionProbes: 0
-  m_AdditionalShaderChannelsFlag: 0
+  m_AdditionalShaderChannelsFlag: 25
   m_UpdateRectTransformForStandalone: 0
   m_SortingLayerID: 0
   m_SortingOrder: 0
@@ -2018,7 +2018,7 @@ MonoBehaviour:
   m_spriteAsset: {fileID: 0}
   m_tintAllSprites: 0
   m_StyleSheet: {fileID: 0}
-  m_TextStyleHashCode: 0
+  m_TextStyleHashCode: -1183493901
   m_overrideHtmlColors: 0
   m_faceColor:
     serializedVersion: 2
@@ -2123,7 +2123,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
   m_Material: {fileID: 0}
   m_Color: {r: 0.72, g: 0.13, b: 0.17, a: 0.95}
@@ -2198,7 +2198,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: f4688fdb7df04437aeb418b961361dc5, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Unity.TextMeshPro::TMPro.TextMeshProUGUI
   m_Material: {fileID: 0}
   m_Color: {r: 0.92, g: 0.95, b: 1, a: 0.92}
@@ -2208,7 +2208,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: "\uC911\uB791\uACBD\uCC30\uC11C"
+  m_text: "\uC911\uB791\uACBD\uCC30\uC11C&\uC11C\uC77C\uB300\uD559\uAD50"
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 62e1a9fa2f115e042964618918fa7724, type: 2}
   m_sharedMaterial: {fileID: -8986738017516955516, guid: 62e1a9fa2f115e042964618918fa7724, type: 2}
@@ -2230,7 +2230,7 @@ MonoBehaviour:
   m_spriteAsset: {fileID: 0}
   m_tintAllSprites: 0
   m_StyleSheet: {fileID: 0}
-  m_TextStyleHashCode: 0
+  m_TextStyleHashCode: -1183493901
   m_overrideHtmlColors: 0
   m_faceColor:
     serializedVersion: 2

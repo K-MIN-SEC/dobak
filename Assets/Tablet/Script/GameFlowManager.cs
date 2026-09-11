@@ -1767,7 +1767,7 @@ public sealed class GameFlowManager : MonoBehaviour
         string[] lines = IsWeekend
             ? new[]
             {
-                $"{jobMark} 카페 아르바이트  08:00~16:00",
+                $"{jobMark} 카페 근무 · 08:00~16:00",
                 studyLine,
                 goalLine,
                 debtLine

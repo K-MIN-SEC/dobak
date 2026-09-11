@@ -543,7 +543,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             scene.lines.Add(CreateLine(
                 "v23_evening_arrival_" + scene.id + "_01", 1,
                 "Mom", "엄마", "dialogue", string.Empty,
-                momText, "clock:set=18:00", string.Empty));
+                momText, "clock:advance_to=18:00", string.Empty));
             scene.lines.Add(CreateLine(
                 "v23_evening_arrival_" + scene.id + "_02", 2,
                 "Protagonist", "나", "dialogue", string.Empty,
@@ -551,7 +551,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             scene.lines.Add(CreateLine(
                 "v23_evening_arrival_" + scene.id + "_03", 3,
                 "System", string.Empty, "router", string.Empty,
-                string.Empty, "clock:set=21:00", string.Empty));
+                string.Empty, "clock:advance_to=21:00", string.Empty));
 
             foreach (ScenarioV3Line line in originalLines)
                 scene.lines.Add(line);
@@ -1529,12 +1529,12 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
                 if (string.Equals(job, "pending", StringComparison.OrdinalIgnoreCase))
                 {
                     detail = flow.CurrentHour < 8
-                        ? " · 08:00 근무 시작"
+                        ? " · 08:00~16:00"
                         : flow.CurrentHour == 8
                             ? " · 지금 출근 가능"
                             : " · 오늘 근무 놓침";
                 }
-                lines[0].text = $"{mark} 카페 아르바이트  08:00~16:00{detail}";
+                lines[0].text = $"{mark} 카페 근무{detail}";
             }
             return;
         }

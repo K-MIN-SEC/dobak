@@ -16,7 +16,7 @@ public static class ScenarioV4FullPlayQa
     private enum Route
     {
         Recovery, Prevention, NoGamble, NoHelp, Collapse, NoFunds, MinjaeDebt, SeojunDebt,
-        LoanHeld, RepeatLoss, ProjectFail, MixedA, MixedB, MixedC
+        LoanHeld, RepeatLoss, ProjectFail, StudyMiss, MixedA, MixedB, MixedC
     }
 
     private static readonly Route[] AllRoutes =
@@ -32,6 +32,7 @@ public static class ScenarioV4FullPlayQa
         Route.LoanHeld,
         Route.RepeatLoss,
         Route.ProjectFail,
+        Route.StudyMiss,
         Route.MixedA,
         Route.MixedB,
         Route.MixedC
@@ -71,6 +72,8 @@ public static class ScenarioV4FullPlayQa
     private static string expectedConsecutiveGambleScene = string.Empty;
     private static string lastBlockingDialogue = string.Empty;
     private static readonly HashSet<string> observedScenes = new HashSet<string>();
+    private static readonly List<string> observedLineOrder = new List<string>();
+    private static readonly Dictionary<string, int> observedLineHours = new Dictionary<string, int>();
     private static bool jobGateAttempted;
     private static bool jobGateVerified;
     private static bool weekendStudyGateAttempted;
@@ -87,6 +90,7 @@ public static class ScenarioV4FullPlayQa
     public static void RunCollapse() => Run(Route.Collapse);
     public static void RunNoFunds() => Run(Route.NoFunds);
     public static void RunProjectFail() => Run(Route.ProjectFail);
+    public static void RunStudyMiss() => Run(Route.StudyMiss);
     public static void RunRepeatLoss() => Run(Route.RepeatLoss);
     public static void RunAll()
     {
@@ -165,6 +169,8 @@ public static class ScenarioV4FullPlayQa
         expectedConsecutiveGambleScene = string.Empty;
         lastBlockingDialogue = string.Empty;
         observedScenes.Clear();
+        observedLineOrder.Clear();
+        observedLineHours.Clear();
         jobGateAttempted = false;
         jobGateVerified = false;
         weekendStudyGateAttempted = false;
@@ -262,6 +268,15 @@ public static class ScenarioV4FullPlayQa
             pendingMapTarget = string.Empty;
         }
 
+        if (!string.IsNullOrEmpty(director.ActiveLineId) &&
+            (observedLineOrder.Count == 0 || observedLineOrder[observedLineOrder.Count - 1] != director.ActiveLineId))
+        {
+            observedLineOrder.Add(director.ActiveLineId);
+            observedLineHours[director.ActiveLineId] = flow.CurrentHour;
+            Debug.Log($"[SCENARIO V4 ORDER] day={flow.CurrentDay} hour={flow.CurrentHour} " +
+                      $"scene={director.ActiveSceneId} line={director.ActiveLineId}");
+        }
+
         if (EditorApplication.timeSinceStartup >= nextDebugAt)
         {
             FieldInfo transitionField = typeof(ScenarioV3Director).GetField("sceneTransitionInProgress",
@@ -322,6 +337,32 @@ public static class ScenarioV4FullPlayQa
                 Expect(!string.Equals(director.GetState("schedule.project"), "complete",
                         StringComparison.OrdinalIgnoreCase),
                     "Project-failure route incorrectly marked the group project complete.");
+            }
+            if (route == Route.ProjectFail)
+            {
+                ExpectSceneLineOrder("v5_d4_study_missed_first");
+                Expect(observedLineHours.TryGetValue("v5_d4_study_missed_first_01", out int missedHour) &&
+                       missedHour == 21,
+                    "Day-4 missed-study night scene did not advance to 21:00 before its first line.");
+            }
+            else if (route == Route.StudyMiss)
+            {
+                int dayOneGambleIndex = observedLineOrder.FindIndex(lineId =>
+                    lineId.StartsWith("gamble_", StringComparison.Ordinal));
+                int dayOneMissIndex = observedLineOrder.IndexOf("v5_d1_study_missed_first_01");
+                Expect(dayOneGambleIndex >= 0 && dayOneMissIndex > dayOneGambleIndex,
+                    "Day-1 gambling did not lead into the missed-study evening scene.");
+                Expect(observedLineHours.TryGetValue("gamble_2_02", out int gambleEndHour) &&
+                       observedLineHours.TryGetValue("v23_evening_arrival_v5_d1_study_missed_first_01",
+                           out int eveningArrivalHour) && eveningArrivalHour >= gambleEndHour,
+                    "The day-1 missed-study evening moved the clock backwards after gambling.");
+                ExpectSceneLineOrder("v5_d1_study_missed_first");
+                ExpectSceneLineOrder("v5_d2_study_missed_repeat");
+                ExpectSceneLineOrder("v5_d3_study_missed_chronic");
+                Expect(observedScenes.Contains("v5_d4_school_miss_repeat"),
+                    "Repeated study misses were not reflected at school on day 4.");
+                Expect(int.Parse(director.GetState("counter.homework_failures")) == 3,
+                    "Study-miss route did not preserve all three missed study tasks.");
             }
             if (route == Route.Recovery)
             {
@@ -483,7 +524,7 @@ public static class ScenarioV4FullPlayQa
         }
 
         Button scheduleFirst = FindButtonWithText("일정부터 한다");
-        if (scheduleFirst != null)
+        if (scheduleFirst != null && !(route == Route.StudyMiss && flow.CurrentDay == 1))
         {
             if (flow.IsWeekend && !flow.IsJobDone)
                 jobGateVerified = true;
@@ -582,6 +623,16 @@ public static class ScenarioV4FullPlayQa
                     return;
                 }
 
+                if (route == Route.StudyMiss && (flow.CurrentDay == 2 || flow.CurrentDay == 3))
+                {
+                    if (flow.CurrentHour < 18)
+                    {
+                        flow.V3SetClock("18:00");
+                        nextActionAt = EditorApplication.timeSinceStartup + SceneSettleDelay;
+                    }
+                    return;
+                }
+
                 OpenAppImmediate(apps, AppType.Study);
                 quizOpen = true;
                 nextActionAt = EditorApplication.timeSinceStartup + SceneSettleDelay;
@@ -597,7 +648,27 @@ public static class ScenarioV4FullPlayQa
             }
             if (flow.V3HasStudyToday && !flow.IsHomeworkDone)
             {
+                bool gambleInsteadOfDayOneStudy = route == Route.StudyMiss && flow.CurrentDay == 1;
                 bool skipProjectWork = route == Route.ProjectFail && flow.CurrentDay == 4;
+                if (gambleInsteadOfDayOneStudy)
+                {
+                    if (flow.CurrentLocation != "집")
+                    {
+                        BeginMapAction(apps, "집");
+                        return;
+                    }
+
+                    Button launcher = FindActiveButton("Gambling Launcher");
+                    if (launcher == null)
+                    {
+                        Fail("The day-1 gambling launcher was missing while study was pending.");
+                        return;
+                    }
+
+                    launcher.onClick.Invoke();
+                    nextActionAt = EditorApplication.timeSinceStartup + UiSettleDelay;
+                    return;
+                }
                 if (skipProjectWork)
                 {
                     if (flow.CurrentHour < 21)
@@ -675,7 +746,15 @@ public static class ScenarioV4FullPlayQa
         }
 
         GameObject visibleNovel = GetPrivate<GameObject>(director, "novelPanel");
+        if (director.ActiveSceneId == "v5_d1_study_missed_first" &&
+            director.ActiveLineId == "v5_d1_study_missed_first_01" &&
+            !VisibleTextContains("도박 앱을 보느라 오늘 정리하려던 과제를 잊었다"))
+        {
+            nextActionAt = EditorApplication.timeSinceStartup + UiSettleDelay;
+            return;
+        }
         if (director.ActiveSceneId != lastCapturedScene && RequiresSettledNovelCapture(director.ActiveSceneId) &&
+            IsCaptureLineReady(director.ActiveSceneId, director.ActiveLineId) &&
             visibleNovel != null && visibleNovel.activeInHierarchy &&
             !GetPrivateValue<bool>(director, "sceneTransitionInProgress") &&
             !GetPrivateValue<bool>(director, "isTyping"))
@@ -874,7 +953,7 @@ public static class ScenarioV4FullPlayQa
             return choices[(hash & int.MaxValue) % choices.Count];
         }
 
-        string[] preferred = route == Route.NoGamble || route == Route.Collapse
+        string[] preferred = route == Route.NoGamble || route == Route.Collapse || route == Route.StudyMiss
             ? noGambleChoices
             : route == Route.Prevention
             ? preventionChoices
@@ -933,6 +1012,7 @@ public static class ScenarioV4FullPlayQa
             Route.ProjectFail => day >= 3 ? 3 : day == 2 ? 2 : 1,
             Route.Prevention => day >= 2 ? 2 : 1,
             Route.NoGamble => 0,
+            Route.StudyMiss => 0,
             Route.Collapse => 0,
             Route.NoHelp => day >= 3 ? 3 : day == 2 ? 2 : 1,
             Route.NoFunds => day >= 3 ? 6 : day == 2 ? 2 : 1,
@@ -1017,6 +1097,7 @@ public static class ScenarioV4FullPlayQa
     private static bool ShouldCaptureScene(string scene)
     {
         return scene is "gamble_1" or "gamble_3" or "gamble_5" or "borrow_choice" or
+               "v5_d1_study_missed_first" or
                "v5_d4_school_risk" or "v5_d4_help_response" or "v5_d4_hide_result" or
                "v5_d2_missed_daytime" or "v5_d3_missed_daytime_first" or
                "v5_d3_missed_daytime_fired" or "ending_recovery" or "ending_prevented" or
@@ -1026,8 +1107,14 @@ public static class ScenarioV4FullPlayQa
 
     private static bool RequiresSettledNovelCapture(string scene)
     {
-        return scene is "v5_d2_missed_daytime" or "v5_d3_missed_daytime_first" or
+        return scene is "v5_d1_study_missed_first" or "v5_d2_missed_daytime" or
+               "v5_d3_missed_daytime_first" or
                "v5_d3_missed_daytime_fired";
+    }
+
+    private static bool IsCaptureLineReady(string scene, string line)
+    {
+        return scene != "v5_d1_study_missed_first" || line == "v5_d1_study_missed_first_01";
     }
 
     private static Button FindMapButton(string displayName)
@@ -1117,6 +1204,18 @@ public static class ScenarioV4FullPlayQa
             Expect(observedScenes.Contains("v5_d3_missed_daytime_fired"),
                 "The consecutive-miss daytime bridge was not played.");
         }
+    }
+
+    private static void ExpectSceneLineOrder(string sceneId)
+    {
+        string first = sceneId + "_01";
+        string second = sceneId + "_02";
+        string third = sceneId + "_03";
+        int firstIndex = observedLineOrder.IndexOf(first);
+        int secondIndex = observedLineOrder.IndexOf(second);
+        int thirdIndex = observedLineOrder.IndexOf(third);
+        Expect(firstIndex >= 0 && secondIndex > firstIndex && thirdIndex > secondIndex,
+            $"Scene lines were missing or out of order: {first} -> {second} -> {third}.");
     }
 
     private static void Expect(bool condition, string message)

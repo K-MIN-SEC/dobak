@@ -325,9 +325,17 @@ public sealed class ScenarioV3Director : MonoBehaviour
 
     private void Update()
     {
-        if (!IsReady || flow == null || flow.IsGameEnded || flow.IsSleepHour ||
+        if (!IsReady || flow == null || flow.IsGameEnded ||
             flow.CurrentLocation != "집" || activeScene != null || sceneQueue.Count > 0 ||
             waitingForMessageChoice || waitingForMessageSceneClose || HasPendingMessageAction)
+            return;
+
+        // The clock advances through player actions rather than real time. Check the study
+        // deadline whenever an action leaves the Director idle so 18:00 cannot become a dead end.
+        if (TryQueueEveningFill())
+            return;
+
+        if (flow.IsSleepHour)
             return;
 
         // A message/app close can re-enter the scene completion callback. In that narrow
@@ -910,6 +918,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
         state["flag.d1_mom_message_available"] = "false";
         state["flag.d1_mom_message_read"] = "false";
         state["flag.minjae_first_invite_read"] = "false";
+        state["pending.homework_missed_evening"] = "false";
         state["relation.seoyeon"] = "0";
         state["relation.manager"] = "0";
         flow.V3ResetRun(StartingCash);
@@ -1685,6 +1694,13 @@ public sealed class ScenarioV3Director : MonoBehaviour
         if (line == null)
             return new List<ScenarioV3Choice>();
 
+        // Once the 18:00 study deadline has passed, finish the current fixed-result scene and
+        // hand control to the missed-study evening instead of starting another gambling round.
+        if (activeScene != null &&
+            string.Equals(activeScene.arc, "gambling", StringComparison.OrdinalIgnoreCase) &&
+            IsHomeworkDeadlineReached())
+            return new List<ScenarioV3Choice>();
+
         return line.Choices.Where(IsChoiceAvailable).ToList();
     }
 
@@ -1872,9 +1888,14 @@ public sealed class ScenarioV3Director : MonoBehaviour
 
     private bool TryQueueEveningFill()
     {
-        if (flow.CurrentDay >= FinalDay || flow.CurrentLocation != "집" || flow.IsSleepHour ||
-            !IsDailyScheduleResolvedForEvening() || GetState("evening_filled") == "1" ||
+        if (flow.CurrentDay >= FinalDay || flow.CurrentLocation != "집" ||
+            GetState("evening_filled") == "1" ||
             activeScene != null || sceneQueue.Count > 0)
+            return false;
+
+        TryResolveOverdueHomework();
+        bool missedEveningPending = GetState("pending.homework_missed_evening") == "true";
+        if ((flow.IsSleepHour && !missedEveningPending) || !IsDailyScheduleResolvedForEvening())
             return false;
 
         if (TryQueueDayTenEveningReminder())
@@ -1884,13 +1905,35 @@ public sealed class ScenarioV3Director : MonoBehaviour
         int queued = QueueTrigger("evening_fill", null);
         if (queued == 0)
         {
-            flow.V3SetClock("21:00");
+            if (flow.CurrentHour < 21)
+                flow.V3SetClock("21:00");
+            SetState("pending.homework_missed_evening", "false");
             Save();
             return false;
         }
 
+        SetState("pending.homework_missed_evening", "false");
         Save();
         StartQueuedScene();
+        return true;
+    }
+
+    private bool IsHomeworkDeadlineReached()
+    {
+        return flow != null && flow.CurrentDay >= 1 && flow.CurrentDay < FinalDay &&
+               flow.CurrentLocation == "집" && flow.CurrentHour >= 18 && flow.V3HasStudyToday &&
+               GetState("schedule.homework") == "pending";
+    }
+
+    private bool TryResolveOverdueHomework()
+    {
+        if (!IsHomeworkDeadlineReached())
+            return false;
+
+        SetState("schedule.homework", "missed");
+        flow.V3SetSchedule("homework", "missed");
+        AddInt("counter.homework_failures", 1);
+        SetState("pending.homework_missed_evening", "true");
         return true;
     }
 
@@ -2086,6 +2129,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
         state["bedtime_cued"] = "0";
         state["day_finalized"] = "0";
         state["pending.gamble_attention"] = "false";
+        state["pending.homework_missed_evening"] = "false";
         // 밤샘으로 10시에 깬 날에는 차용을 이어서 처리하지 않는다. 이 시각에는
         // 등교가 우선이며, 남아 있던 밤 전용 차용 상태도 함께 버린다.
         state["pending.borrow_menu"] = "false";
@@ -2156,6 +2200,7 @@ public sealed class ScenarioV3Director : MonoBehaviour
         state["bedtime_cued"] = "0";
         state["day_finalized"] = "0";
         state["pending.gamble_attention"] = "false";
+        state["pending.homework_missed_evening"] = "false";
         state["flag.late_wake_today"] = "false";
         state["flag.borrow_deferred"] = "false";
         state["flag.late_school_prompt_pending"] = "false";
