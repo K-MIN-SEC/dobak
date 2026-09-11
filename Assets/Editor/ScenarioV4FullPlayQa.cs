@@ -55,6 +55,7 @@ public static class ScenarioV4FullPlayQa
     private static bool capturedChoiceDebug;
     private static bool capturedManagerHeader;
     private static bool day2MinjaeBackVerified;
+    private static bool day1OutgoingRapidBackVerified;
     private static double choiceSubmittedAt;
     private static bool failed;
     private static bool previousOptionsEnabled;
@@ -78,6 +79,9 @@ public static class ScenarioV4FullPlayQa
     private static bool jobGateVerified;
     private static bool weekendStudyGateAttempted;
     private static bool weekendStudyGateVerified;
+    private static bool forceWeekendLateWake;
+    private static bool weekendLateWakeStarted;
+    private static bool weekendArchivedMessageVerified;
 
     private const double UiSettleDelay = 0.12d;
     private const double SceneSettleDelay = 0.7d;
@@ -85,7 +89,16 @@ public static class ScenarioV4FullPlayQa
 
     public static void RunRecovery() => Run(Route.Recovery);
     public static void RunPrevention() => Run(Route.Prevention);
-    public static void RunNoGamble() => Run(Route.NoGamble);
+    public static void RunNoGamble()
+    {
+        forceWeekendLateWake = false;
+        Run(Route.NoGamble);
+    }
+    public static void RunWeekendLateWake()
+    {
+        forceWeekendLateWake = true;
+        Run(Route.NoGamble);
+    }
     public static void RunNoHelp() => Run(Route.NoHelp);
     public static void RunCollapse() => Run(Route.Collapse);
     public static void RunNoFunds() => Run(Route.NoFunds);
@@ -159,6 +172,7 @@ public static class ScenarioV4FullPlayQa
         capturedChoiceDebug = false;
         capturedManagerHeader = false;
         day2MinjaeBackVerified = false;
+        day1OutgoingRapidBackVerified = false;
         choiceSubmittedAt = 0d;
         routeCompleted = false;
         repeatLossObserved = false;
@@ -175,6 +189,8 @@ public static class ScenarioV4FullPlayQa
         jobGateVerified = false;
         weekendStudyGateAttempted = false;
         weekendStudyGateVerified = false;
+        weekendLateWakeStarted = false;
+        weekendArchivedMessageVerified = false;
         pendingMapTarget = string.Empty;
         lastLine = string.Empty;
         lastCapturedScene = string.Empty;
@@ -383,8 +399,22 @@ public static class ScenarioV4FullPlayQa
                 Expect(director.GetState("ending") == "prevented", $"Expected prevented ending, got {director.GetState("ending")}.");
                 Expect(int.Parse(director.GetState("counter.gamble_sessions")) == 0,
                     "No-gamble route incorrectly recorded a gambling session.");
-                Expect(day2MinjaeBackVerified,
-                    "Closing Minjae's day-2 conversation did not return to the tablet home screen.");
+                Expect(day1OutgoingRapidBackVerified,
+                    "Day-1 Minjae reply remained pending after sending and immediately closing Message.");
+                if (forceWeekendLateWake)
+                {
+                    Expect(weekendArchivedMessageVerified,
+                        "The skipped morning Minjae message was not archived as already read.");
+                    Expect(!observedLineOrder.Contains("v5_d2_minjae_01"),
+                        "The normal day-2 Minjae work choice appeared after the shift was already missed.");
+                    ExpectLineBefore("sys_late_gamble_morning_weekend_02", "v5_d2_job_missed_01");
+                    ExpectLineBefore("v5_d2_job_missed_01", "v5_d2_minjae_after_miss_01");
+                }
+                else
+                {
+                    Expect(day2MinjaeBackVerified,
+                        "Closing Minjae's day-2 conversation did not return to the tablet home screen.");
+                }
             }
             else if (route == Route.NoHelp)
             {
@@ -511,6 +541,17 @@ public static class ScenarioV4FullPlayQa
                     return;
                 }
             }
+            nextActionAt = EditorApplication.timeSinceStartup + SceneSettleDelay;
+            return;
+        }
+
+        if (forceWeekendLateWake && !weekendLateWakeStarted && flow.CurrentDay == 1 && flow.CanSleepNow)
+        {
+            apps.CloseCurrentApp();
+            typeof(ScenarioV3Director).GetField("pendingLateWakeAfterGambling",
+                BindingFlags.Instance | BindingFlags.NonPublic)?.SetValue(director, true);
+            weekendLateWakeStarted = true;
+            InvokePrivate(director, "BeginForcedLateMorningAdvance");
             nextActionAt = EditorApplication.timeSinceStartup + SceneSettleDelay;
             return;
         }
@@ -713,6 +754,21 @@ public static class ScenarioV4FullPlayQa
         }
 
         DialogueManager visibleDialogue = GetPrivate<DialogueManager>(director, "dialogue");
+        if (forceWeekendLateWake && !weekendArchivedMessageVerified &&
+            director.ActiveSceneId == "v5_d2_job_missed" && visibleDialogue != null)
+        {
+            Dictionary<SpeakerType, ChatChannel> channels =
+                GetPrivate<Dictionary<SpeakerType, ChatChannel>>(visibleDialogue, "channels");
+            ChatChannel friend = channels != null &&
+                                 channels.TryGetValue(SpeakerType.Friend, out ChatChannel found)
+                ? found
+                : null;
+            weekendArchivedMessageVerified = friend != null && friend.unreadCount == 0 &&
+                friend.messageHistory.Any(message => !message.isPlayer &&
+                    message.text.Contains("오늘 아르바이트지?"));
+            Expect(weekendArchivedMessageVerified,
+                "The day-2 Minjae morning message was not present as read before the manager message.");
+        }
         if (!day2MinjaeBackVerified && route == Route.NoGamble &&
             director.ActiveSceneId == "v5_d2_minjae" &&
             GetPrivateValue<bool>(director, "waitingForMessageSceneClose") &&
@@ -777,6 +833,24 @@ public static class ScenarioV4FullPlayQa
             if (apps.CurrentAppType != AppType.Message)
             {
                 OpenAppImmediate(apps, AppType.Message);
+            }
+            else if (route == Route.NoGamble && !day1OutgoingRapidBackVerified &&
+                     string.Equals(pendingOutgoing.id, "d1_minjae_invite_06", StringComparison.OrdinalIgnoreCase))
+            {
+                Button send = FindButtonWithText("메시지 보낸다.");
+                if (send == null)
+                {
+                    nextActionAt = EditorApplication.timeSinceStartup + UiSettleDelay;
+                    return;
+                }
+
+                send.onClick.Invoke();
+                apps.CloseCurrentApp();
+                day1OutgoingRapidBackVerified =
+                    GetPrivate<ScenarioV3Line>(director, "pendingOutgoingLine") == null;
+                Expect(day1OutgoingRapidBackVerified,
+                    "Day-1 Minjae reply stayed pending when Message was closed immediately after send.");
+                replyBubbleVerified = true;
             }
             else
             {
@@ -1053,6 +1127,14 @@ public static class ScenarioV4FullPlayQa
     {
         if (flow.IsHomeworkDone)
         {
+            if (route == Route.NoGamble && flow.CurrentDay >= 2 && flow.CurrentDay <= 3)
+            {
+                ScenarioV3Director director = UnityEngine.Object.FindAnyObjectByType<ScenarioV3Director>();
+                bool parsed = int.TryParse(director?.GetState("project.progress"), out int progress);
+                int expected = flow.CurrentDay - 1;
+                Expect(parsed && progress == expected,
+                    $"Project progress after day {flow.CurrentDay} study was {progress}, expected {expected}.");
+            }
             apps.CloseCurrentApp();
             quizOpen = false;
             nextActionAt = EditorApplication.timeSinceStartup + UiSettleDelay;
@@ -1216,6 +1298,14 @@ public static class ScenarioV4FullPlayQa
         int thirdIndex = observedLineOrder.IndexOf(third);
         Expect(firstIndex >= 0 && secondIndex > firstIndex && thirdIndex > secondIndex,
             $"Scene lines were missing or out of order: {first} -> {second} -> {third}.");
+    }
+
+    private static void ExpectLineBefore(string firstLineId, string secondLineId)
+    {
+        int firstIndex = observedLineOrder.IndexOf(firstLineId);
+        int secondIndex = observedLineOrder.IndexOf(secondLineId);
+        Expect(firstIndex >= 0 && secondIndex > firstIndex,
+            $"Scene lines were missing or out of order: {firstLineId} -> {secondLineId}.");
     }
 
     private static void Expect(bool condition, string message)

@@ -239,7 +239,10 @@ public sealed class ScenarioV3Director : MonoBehaviour
             ResolvePendingGambleAttentionAsDeclined();
 
         if (trigger == "homework_complete")
+        {
             SetState("schedule.homework", "complete");
+            RecordProjectStudyProgress();
+        }
         else if (trigger == "school_complete")
             SetState("schedule.school", "complete");
         else if (trigger == "school_missed")
@@ -278,6 +281,19 @@ public sealed class ScenarioV3Director : MonoBehaviour
         }
         TrySendUnreadReminder();
         Save();
+    }
+
+    private void RecordProjectStudyProgress()
+    {
+        if (flow == null || flow.CurrentDay < 2 || flow.CurrentDay > 3)
+            return;
+
+        string marker = $"flag.project_study_day_{flow.CurrentDay}";
+        if (GetState(marker) == "true")
+            return;
+
+        AddInt("project.progress", 1);
+        SetState(marker, "true");
     }
 
     public void NotifyAppOpened(AppType? app)
@@ -2123,7 +2139,8 @@ public sealed class ScenarioV3Director : MonoBehaviour
         dialogueLog.Clear();
         state["schedule.school"] = "pending";
         state["schedule.homework"] = "pending";
-        state["schedule.job"] = "pending";
+        bool missedWeekendJob = wokeFromGambling && flow.IsWeekend;
+        state["schedule.job"] = missedWeekendJob ? "missed" : "pending";
         state["schedule.sleep"] = "pending";
         state["evening_filled"] = "0";
         state["bedtime_cued"] = "0";
@@ -2142,6 +2159,11 @@ public sealed class ScenarioV3Director : MonoBehaviour
         state["day_cash_start"] = flow.V3BankCash.ToString(CultureInfo.InvariantCulture);
         flow.V3SetLocation("집");
         flow.V3SetClock(wokeFromGambling ? "10:00" : "07:00");
+        if (missedWeekendJob)
+        {
+            flow.V3SetSchedule("job", "missed");
+            ArchiveMissedWeekendMorningMinjaeMessage();
+        }
         Save();
 
         QueueTrigger("day_start", () =>
@@ -2150,8 +2172,46 @@ public sealed class ScenarioV3Director : MonoBehaviour
             // DOBak V13-D07: 당일 아침 장면 선택이 끝난 뒤 임시 플래그를 정리해 다음 날 장면에 남기지 않는다.
             SetState("flag.gambled_late", "false");
             Save();
+            if (missedWeekendJob)
+            {
+                QueueTrigger("job_missed", null);
+                StartQueuedScene();
+            }
         });
         StartQueuedScene();
+    }
+
+    private void ArchiveMissedWeekendMorningMinjaeMessage()
+    {
+        string sceneId;
+        if (flow.CurrentDay == 2)
+        {
+            sceneId = "v5_d2_minjae";
+        }
+        else if (GetInt("counter.gamble_sessions") == 0)
+        {
+            sceneId = "v5_d3_minjae_none";
+        }
+        else if (GetInt("counter.gamble_sessions") < 3)
+        {
+            sceneId = "v5_d3_minjae_profit";
+        }
+        else
+        {
+            sceneId = "v5_d3_minjae_loss";
+        }
+
+        ScenarioV3Line line = database.GetScene(sceneId)?.lines.FirstOrDefault(candidate =>
+            string.Equals(candidate.delivery, "message", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(candidate.speaker, "Minjae", StringComparison.OrdinalIgnoreCase));
+        if (line == null || !deliveredIncomingLineIds.Add(line.id))
+            return;
+
+        string contact = string.IsNullOrWhiteSpace(line.contact) ? "민재" : line.contact;
+        dialogue?.ReceiveNotificationMessage(SpeakerType.Friend, contact, ExpandText(line.text), false);
+        SetState("unread_count", dialogue != null
+            ? dialogue.TotalUnreadCount.ToString(CultureInfo.InvariantCulture)
+            : "0");
     }
 
     private static bool CrossesClockHour(int startHour, int elapsedHours, int targetHour)

@@ -278,7 +278,7 @@ public sealed class ScenarioV3FinalRuntimeFix : MonoBehaviour
             string.Empty, string.Empty));
         weekendLateMorning.lines.Add(CreateLine(
             "sys_late_gamble_morning_weekend_02", 2, "Protagonist", "나", "narration", string.Empty,
-            "벌써 오전 10시다. 카페 근무 시간은 이미 지나 있었다.... 결국 오늘 알바를 놓쳤다.",
+            "벌써 오전 10시다. 카페 근무 시간은 이미 지나 있었다.... 결국 오늘 아르바이트를 놓쳤다.",
             "fatigue:add=1|counter.short_sleep_days:add=1|flag.gambled_late:set=false", string.Empty));
         AddOrReplaceScene(weekendLateMorning);
 

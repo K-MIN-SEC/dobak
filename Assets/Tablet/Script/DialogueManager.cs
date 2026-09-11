@@ -872,10 +872,24 @@ public class DialogueManager : MonoBehaviour
         if (channels.TryGetValue(currentSpeaker, out ChatChannel selectedChannel))
             selectedChannel.eventChoices.Clear();
 
-        StartCoroutine(CompleteChoiceAfterReply(selectedChoice, currentSpeaker));
+        bool outgoingScenarioMessage = !string.IsNullOrWhiteSpace(selectedChoice.scenarioAction) &&
+            selectedChoice.scenarioAction.StartsWith("v3-send-message:", StringComparison.OrdinalIgnoreCase);
+        bool scenarioActionCompleted = false;
+        if (outgoingScenarioMessage && GameFlowManager.Instance != null)
+        {
+            // Complete an explicit send before the message app can be closed. Coroutines on this
+            // panel stop when Back deactivates it, which previously left the sent reply pending.
+            GameFlowManager.Instance.ExecuteScenarioAction(selectedChoice.scenarioAction);
+            scenarioActionCompleted = true;
+        }
+
+        StartCoroutine(CompleteChoiceAfterReply(selectedChoice, currentSpeaker, scenarioActionCompleted));
     }
 
-    private IEnumerator CompleteChoiceAfterReply(Choice selectedChoice, SpeakerType selectedSpeaker)
+    private IEnumerator CompleteChoiceAfterReply(
+        Choice selectedChoice,
+        SpeakerType selectedSpeaker,
+        bool scenarioActionCompleted)
     {
         yield return StartCoroutine(ScrollToBottom());
         yield return new WaitForSecondsRealtime(0.3f);
@@ -884,7 +898,7 @@ public class DialogueManager : MonoBehaviour
 
         if (GameFlowManager.Instance != null)
         {
-            if (!string.IsNullOrWhiteSpace(selectedChoice.scenarioAction))
+            if (!scenarioActionCompleted && !string.IsNullOrWhiteSpace(selectedChoice.scenarioAction))
                 GameFlowManager.Instance.ExecuteScenarioAction(selectedChoice.scenarioAction);
 
             switch (selectedChoice.action)
@@ -1079,7 +1093,11 @@ public class DialogueManager : MonoBehaviour
         channel.typingBubble = null;
     }
 
-    public void ReceiveNotificationMessage(SpeakerType speaker, string speakerName, string message)
+    public void ReceiveNotificationMessage(
+        SpeakerType speaker,
+        string speakerName,
+        string message,
+        bool markUnread = true)
     {
         EnsureInitialized();
         if (!channels.ContainsKey(speaker))
@@ -1124,7 +1142,7 @@ public class DialogueManager : MonoBehaviour
                 RenderReceivedMessages(channel);
                 channel.unreadCount = 0;
             }
-            else
+            else if (markUnread)
             {
                 channel.unreadCount++;
             }
